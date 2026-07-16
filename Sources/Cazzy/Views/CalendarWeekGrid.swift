@@ -550,33 +550,34 @@ private struct ExperimentDetailPopover: View {
         }
 
         // Running behind: nudge this + every later experiment today by the same delay.
-        // A fixed menu instead of an inline stepper — macOS popovers clip content that
-        // appears after the popover is already sized.
-        Menu {
-            ForEach([15, 30, 45, 60, 90, 120], id: \.self) { minutes in
-                Button("Delay by \(DurationText.format(minutes))") {
-                    shiftRestOfDay(from: experiment, by: minutes)
-                }
-            }
-            Divider()
-            ForEach([15, 30], id: \.self) { minutes in
-                Button("Move up by \(DurationText.format(minutes))") {
-                    shiftRestOfDay(from: experiment, by: -minutes)
-                }
-            }
-        } label: {
+        // Always-visible quick buttons — anything that has to pop up or expand inside an
+        // NSPopover (inline steppers, Menu) fails to appear, so the options are static.
+        VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 8) {
                 Image(systemName: "clock.badge.exclamationmark")
                     .font(.system(size: 11))
                     .frame(width: 14)
-                Text("Running behind…")
+                    .foregroundStyle(theme.textPrimary)
+                Text("Running behind? Shift rest of day:")
                     .font(theme.bodyFont(12))
-                Spacer(minLength: 0)
+                    .foregroundStyle(theme.textPrimary)
             }
+            HStack(spacing: 5) {
+                ForEach([15, 30, 45, 60, 120], id: \.self) { minutes in
+                    shiftButton("+\(DurationText.format(minutes))", minutes: minutes, experiment: experiment)
+                }
+            }
+            .padding(.leading, 22)
+            HStack(spacing: 5) {
+                Text("Ahead?")
+                    .font(theme.bodyFont(10))
+                    .foregroundStyle(theme.textTertiary)
+                ForEach([15, 30], id: \.self) { minutes in
+                    shiftButton("−\(DurationText.format(minutes))", minutes: -minutes, experiment: experiment)
+                }
+            }
+            .padding(.leading, 22)
         }
-        .menuStyle(.borderlessButton)
-        .foregroundStyle(theme.textPrimary)
-        .help("Shift this and every later experiment today by the same amount")
 
         if let noteID = experiment.linkedNoteID, store.notes.contains(where: { $0.id == noteID }) {
             actionRow("book", "Open notebook entry") {
@@ -624,6 +625,20 @@ private struct ExperimentDetailPopover: View {
                 deleteAndCleanUp(experiment, wholeSeries: true)
             }
         }
+    }
+
+    private func shiftButton(_ label: String, minutes: Int, experiment: ScheduledExperiment) -> some View {
+        Button {
+            shiftRestOfDay(from: experiment, by: minutes)
+        } label: {
+            Text(label)
+                .font(theme.bodyFont(10, weight: .medium))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(theme.accent.opacity(0.18)))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(theme.textPrimary)
     }
 
     private func shiftRestOfDay(from experiment: ScheduledExperiment, by minutes: Int) {
