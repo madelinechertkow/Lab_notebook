@@ -185,8 +185,8 @@ private struct ExperimentBlock: View {
     let columnWidth: CGFloat
     @Binding var selectedExperimentID: UUID?
     let onEdit: (ScheduledExperiment) -> Void
+    @Environment(\.openWindow) private var openWindow
 
-    @State private var showingDetail = false
     @State private var dragOffset: CGSize = .zero
     @State private var isDragging = false
 
@@ -224,12 +224,8 @@ private struct ExperimentBlock: View {
                 MouseTracker(
                     onClick: {
                         selectedExperimentID = experiment.id
-                        showingDetail = true
                     },
                     onDoubleClick: {
-                        // The first click of the pair opened the popover; close it and
-                        // open the full editor sheet instead.
-                        showingDetail = false
                         onEdit(experiment)
                     },
                     onDragChanged: { translation in
@@ -241,14 +237,97 @@ private struct ExperimentBlock: View {
                         isDragging = false
                         dragOffset = .zero
                         applyDrag(translation)
-                    }
+                    },
+                    contextMenu: { contextMenuEntries() }
                 )
             )
             .offset(x: 4 + dragOffset.width, y: top + dragOffset.height)
             .opacity(isDragging ? 0.75 : 1)
-            .popover(isPresented: $showingDetail, arrowEdge: .trailing) {
-                ExperimentDetailPopover(experimentID: experiment.id, onEdit: onEdit)
+    }
+
+    /// Right-click menu: the "running behind" delays up front, then the rest of the
+    /// block's actions — a native NSMenu, immune to the popover problems.
+    private func contextMenuEntries() -> [ContextMenuEntry] {
+        var entries: [ContextMenuEntry] = []
+
+        entries.append(.submenu("Running Behind — Delay Rest of Day", [15, 30, 45, 60, 90, 120].map { minutes in
+            ("Delay by \(DurationText.format(minutes))", { shiftRestOfDay(by: minutes) })
+        }))
+        entries.append(.submenu("Ahead of Schedule — Move Up", [15, 30, 45, 60].map { minutes in
+            ("Move up by \(DurationText.format(minutes))", { shiftRestOfDay(by: -minutes) })
+        }))
+        entries.append(.separator)
+
+        entries.append(.action("Edit…", { onEdit(experiment) }))
+        entries.append(.action(experiment.isCompleted ? "Mark as Not Done" : "Mark as Done", {
+            var updated = experiment
+            updated.isCompleted.toggle()
+            store.updateScheduledExperiment(updated)
+        }))
+        entries.append(.separator)
+
+        if let noteID = experiment.linkedNoteID, store.notes.contains(where: { $0.id == noteID }) {
+            entries.append(.action("Open Notebook Entry", {
+                store.pendingOpenNoteID = noteID
+                openWindow(id: "main")
+            }))
+        } else {
+            entries.append(.action("Create Notebook Entry", {
+                if let note = store.createNote(from: experiment) {
+                    store.pendingOpenNoteID = note.id
+                    openWindow(id: "main")
+                }
+            }))
+        }
+
+        if experiment.appleCalendarEventID == nil {
+            if appleCalendar.accessState == .granted {
+                entries.append(.action("Add to Apple Calendar", {
+                    var updated = experiment
+                    updated.appleCalendarEventID = appleCalendar.pushEvent(for: updated)
+                    if updated.appleCalendarEventID != nil {
+                        store.updateScheduledExperiment(updated)
+                    }
+                }))
             }
+        } else {
+            entries.append(.action("Remove from Apple Calendar", {
+                if let id = experiment.appleCalendarEventID {
+                    appleCalendar.removePushedEvent(id: id)
+                }
+                var updated = experiment
+                updated.appleCalendarEventID = nil
+                store.updateScheduledExperiment(updated)
+            }))
+        }
+        entries.append(.separator)
+
+        entries.append(.action(experiment.seriesID == nil ? "Delete" : "Delete This Occurrence", {
+            deleteExperiment(wholeSeries: false)
+        }))
+        if experiment.seriesID != nil {
+            entries.append(.action("Delete Entire Series", {
+                deleteExperiment(wholeSeries: true)
+            }))
+        }
+
+        return entries
+    }
+
+    private func shiftRestOfDay(by minutes: Int) {
+        let shifted = store.shiftDay(startingAt: experiment, by: minutes)
+        for item in shifted {
+            appleCalendar.updatePushedEvent(for: item)
+        }
+    }
+
+    private func deleteExperiment(wholeSeries: Bool) {
+        let removed = store.deleteScheduledExperiment(experiment, wholeSeries: wholeSeries)
+        for item in removed {
+            if let id = item.appleCalendarEventID {
+                appleCalendar.removePushedEvent(id: id)
+            }
+        }
     }
 
     /// Vertical movement changes time (snapped to 15 min), horizontal changes day.
@@ -313,6 +392,14 @@ private struct ExperimentBlock: View {
 
 }
 
+/// One entry of an AppKit context menu shown on right-click.
+enum ContextMenuEntry {
+    case action(String, () -> Void)
+    case submenu(String, [(String, () -> Void)])
+    case separator
+}
+
+
 /// Routes clicks and drags through AppKit mouse events — SwiftUI gestures silently lose
 /// arbitration inside this ScrollView on macOS. Drag translations use window coordinates
 /// so the math stays stable while the tracked view moves under the cursor mid-drag.
@@ -324,6 +411,8 @@ private struct MouseTracker: NSViewRepresentable {
     var onClickAt: ((CGPoint) -> Void)? = nil
     var onDragChanged: ((CGSize) -> Void)? = nil
     var onDragEnded: ((CGSize) -> Void)? = nil
+    /// Built fresh at right-click time so items reflect current state.
+    var contextMenu: (() -> [ContextMenuEntry])? = nil
 
     func makeNSView(context: Context) -> TrackerView {
         let view = TrackerView()
@@ -341,6 +430,13 @@ private struct MouseTracker: NSViewRepresentable {
         view.onClickAt = onClickAt
         view.onDragChanged = onDragChanged
         view.onDragEnded = onDragEnded
+        view.contextMenuProvider = contextMenu
+    }
+
+    /// Wraps a closure so it can ride along as an NSMenuItem's representedObject.
+    final class MenuAction {
+        let run: () -> Void
+        init(_ run: @escaping () -> Void) { self.run = run }
     }
 
     final class TrackerView: NSView {
@@ -349,6 +445,43 @@ private struct MouseTracker: NSViewRepresentable {
         var onClickAt: ((CGPoint) -> Void)?
         var onDragChanged: ((CGSize) -> Void)?
         var onDragEnded: ((CGSize) -> Void)?
+        var contextMenuProvider: (() -> [ContextMenuEntry])?
+
+        override func rightMouseDown(with event: NSEvent) {
+            guard let entries = contextMenuProvider?() else {
+                super.rightMouseDown(with: event)
+                return
+            }
+            let menu = NSMenu()
+            for entry in entries {
+                switch entry {
+                case .separator:
+                    menu.addItem(.separator())
+                case .action(let title, let action):
+                    menu.addItem(makeItem(title, action))
+                case .submenu(let title, let children):
+                    let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+                    let submenu = NSMenu(title: title)
+                    for (childTitle, childAction) in children {
+                        submenu.addItem(makeItem(childTitle, childAction))
+                    }
+                    parent.submenu = submenu
+                    menu.addItem(parent)
+                }
+            }
+            NSMenu.popUpContextMenu(menu, with: event, for: self)
+        }
+
+        private func makeItem(_ title: String, _ action: @escaping () -> Void) -> NSMenuItem {
+            let item = NSMenuItem(title: title, action: #selector(runMenuAction(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = MenuAction(action)
+            return item
+        }
+
+        @objc private func runMenuAction(_ sender: NSMenuItem) {
+            (sender.representedObject as? MenuAction)?.run()
+        }
 
         private var downLocation: NSPoint?
         private var isDragging = false
@@ -400,279 +533,3 @@ private struct MouseTracker: NSViewRepresentable {
     }
 }
 
-// MARK: - Detail popover
-
-private struct ExperimentDetailPopover: View {
-    @EnvironmentObject var store: NoteStore
-    @EnvironmentObject var theme: ThemeStore
-    @EnvironmentObject var appleCalendar: AppleCalendarService
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.openWindow) private var openWindow
-
-    /// Looked up live so the popover stays current if the store changes underneath it.
-    let experimentID: UUID
-    let onEdit: (ScheduledExperiment) -> Void
-
-    private var experiment: ScheduledExperiment? {
-        store.scheduledExperiments.first(where: { $0.id == experimentID })
-    }
-
-    var body: some View {
-        if let experiment {
-            VStack(alignment: .leading, spacing: 10) {
-                editableHeader(experiment)
-                Divider()
-                actions(experiment)
-            }
-            .padding(14)
-            .frame(width: 270)
-        }
-    }
-
-    /// Writes one change through to the store (and any pushed Apple Calendar mirror).
-    private func mutate(_ transform: (inout ScheduledExperiment) -> Void) {
-        guard var updated = experiment else { return }
-        transform(&updated)
-        store.updateScheduledExperiment(updated)
-        appleCalendar.updatePushedEvent(for: updated)
-    }
-
-    private func editableHeader(_ experiment: ScheduledExperiment) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TextField("Title", text: Binding(
-                get: { self.experiment?.title ?? "" },
-                set: { newValue in mutate { $0.title = newValue } }
-            ))
-            .textFieldStyle(.roundedBorder)
-            .font(theme.bodyFont(13, weight: .semibold))
-
-            DatePicker("Starts", selection: Binding(
-                get: { self.experiment?.start ?? experiment.start },
-                set: { newValue in mutate { $0.start = newValue } }
-            ))
-            .font(theme.bodyFont(11))
-
-            HStack(spacing: 4) {
-                Text("Duration")
-                    .font(theme.bodyFont(11))
-                    .foregroundStyle(theme.textSecondary)
-                Spacer()
-                TextField("h", text: durationHoursText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 34)
-                    .multilineTextAlignment(.trailing)
-                Text("hr")
-                    .font(theme.bodyFont(10))
-                    .foregroundStyle(theme.textTertiary)
-                TextField("m", text: durationMinutesText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 34)
-                    .multilineTextAlignment(.trailing)
-                Text("min")
-                    .font(theme.bodyFont(10))
-                    .foregroundStyle(theme.textTertiary)
-            }
-
-            HStack(spacing: 6) {
-                ForEach(ExperimentColor.allCases) { option in
-                    Button {
-                        mutate { $0.color = option }
-                    } label: {
-                        Circle()
-                            .fill(option.color)
-                            .frame(width: 13, height: 13)
-                            .overlay(
-                                Circle().strokeBorder(theme.textPrimary.opacity(experiment.color == option ? 0.8 : 0), lineWidth: 1.5)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .help(option.label)
-                }
-            }
-
-            if let protocolID = experiment.protocolID,
-               let linkedProtocol = store.protocols.first(where: { $0.id == protocolID }) {
-                Label(linkedProtocol.name, systemImage: "list.clipboard")
-                    .font(theme.bodyFont(11))
-                    .foregroundStyle(theme.textSecondary)
-            }
-            if !experiment.notes.isEmpty {
-                Text(experiment.notes)
-                    .font(theme.bodyFont(11))
-                    .foregroundStyle(theme.textTertiary)
-                    .lineLimit(3)
-            }
-        }
-    }
-
-    private var durationHoursText: Binding<String> {
-        Binding(
-            get: {
-                guard let total = experiment?.durationMinutes, total >= 60 else { return "" }
-                return String(total / 60)
-            },
-            set: { newValue in
-                let hours = max(0, Int(newValue.trimmingCharacters(in: .whitespaces)) ?? 0)
-                let minutesPart = (experiment?.durationMinutes ?? 0) % 60
-                let total = hours * 60 + minutesPart
-                if total > 0 { mutate { $0.durationMinutes = total } }
-            }
-        )
-    }
-
-    private var durationMinutesText: Binding<String> {
-        Binding(
-            get: {
-                guard let total = experiment?.durationMinutes else { return "" }
-                let minutes = total % 60
-                return minutes == 0 && total >= 60 ? "" : String(minutes)
-            },
-            set: { newValue in
-                let minutes = max(0, min(59, Int(newValue.trimmingCharacters(in: .whitespaces)) ?? 0))
-                let hoursPart = (experiment?.durationMinutes ?? 0) / 60
-                let total = hoursPart * 60 + minutes
-                if total > 0 { mutate { $0.durationMinutes = total } }
-            }
-        )
-    }
-
-    @ViewBuilder
-    private func actions(_ experiment: ScheduledExperiment) -> some View {
-        actionRow("pencil", "Edit…") {
-            dismiss()
-            onEdit(experiment)
-        }
-
-        actionRow(experiment.isCompleted ? "arrow.uturn.backward.circle" : "checkmark.circle", experiment.isCompleted ? "Mark as not done" : "Mark as done") {
-            var updated = experiment
-            updated.isCompleted.toggle()
-            store.updateScheduledExperiment(updated)
-        }
-
-        // Running behind: nudge this + every later experiment today by the same delay.
-        // Always-visible quick buttons — anything that has to pop up or expand inside an
-        // NSPopover (inline steppers, Menu) fails to appear, so the options are static.
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 8) {
-                Image(systemName: "clock.badge.exclamationmark")
-                    .font(.system(size: 11))
-                    .frame(width: 14)
-                    .foregroundStyle(theme.textPrimary)
-                Text("Running behind? Shift rest of day:")
-                    .font(theme.bodyFont(12))
-                    .foregroundStyle(theme.textPrimary)
-            }
-            HStack(spacing: 5) {
-                ForEach([15, 30, 45, 60, 120], id: \.self) { minutes in
-                    shiftButton("+\(DurationText.format(minutes))", minutes: minutes, experiment: experiment)
-                }
-            }
-            .padding(.leading, 22)
-            HStack(spacing: 5) {
-                Text("Ahead?")
-                    .font(theme.bodyFont(10))
-                    .foregroundStyle(theme.textTertiary)
-                ForEach([15, 30], id: \.self) { minutes in
-                    shiftButton("−\(DurationText.format(minutes))", minutes: -minutes, experiment: experiment)
-                }
-            }
-            .padding(.leading, 22)
-        }
-
-        if let noteID = experiment.linkedNoteID, store.notes.contains(where: { $0.id == noteID }) {
-            actionRow("book", "Open notebook entry") {
-                store.pendingOpenNoteID = noteID
-                openWindow(id: "main")
-                dismiss()
-            }
-        } else {
-            actionRow("square.and.pencil", "Create notebook entry") {
-                if let note = store.createNote(from: experiment) {
-                    store.pendingOpenNoteID = note.id
-                    openWindow(id: "main")
-                }
-                dismiss()
-            }
-        }
-
-        if experiment.appleCalendarEventID == nil {
-            actionRow("calendar.badge.plus", "Add to Apple Calendar") {
-                var updated = experiment
-                updated.appleCalendarEventID = appleCalendar.pushEvent(for: updated)
-                if updated.appleCalendarEventID != nil {
-                    store.updateScheduledExperiment(updated)
-                }
-            }
-            .disabled(appleCalendar.accessState != .granted)
-        } else {
-            actionRow("calendar.badge.minus", "Remove from Apple Calendar") {
-                if let id = experiment.appleCalendarEventID {
-                    appleCalendar.removePushedEvent(id: id)
-                }
-                var updated = experiment
-                updated.appleCalendarEventID = nil
-                store.updateScheduledExperiment(updated)
-            }
-        }
-
-        Divider()
-
-        actionRow("trash", experiment.seriesID == nil ? "Delete" : "Delete this occurrence", role: .destructive) {
-            deleteAndCleanUp(experiment, wholeSeries: false)
-        }
-        if experiment.seriesID != nil {
-            actionRow("trash.fill", "Delete entire series", role: .destructive) {
-                deleteAndCleanUp(experiment, wholeSeries: true)
-            }
-        }
-    }
-
-    private func shiftButton(_ label: String, minutes: Int, experiment: ScheduledExperiment) -> some View {
-        Button {
-            shiftRestOfDay(from: experiment, by: minutes)
-        } label: {
-            Text(label)
-                .font(theme.bodyFont(10, weight: .medium))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(theme.accent.opacity(0.18)))
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(theme.textPrimary)
-    }
-
-    private func shiftRestOfDay(from experiment: ScheduledExperiment, by minutes: Int) {
-        let shifted = store.shiftDay(startingAt: experiment, by: minutes)
-        for item in shifted {
-            appleCalendar.updatePushedEvent(for: item)
-        }
-        dismiss()
-    }
-
-    private func deleteAndCleanUp(_ experiment: ScheduledExperiment, wholeSeries: Bool) {
-        let removed = store.deleteScheduledExperiment(experiment, wholeSeries: wholeSeries)
-        for item in removed {
-            if let id = item.appleCalendarEventID {
-                appleCalendar.removePushedEvent(id: id)
-            }
-        }
-        dismiss()
-    }
-
-    private func actionRow(_ symbol: String, _ label: String, role: ButtonRole? = nil, action: @escaping () -> Void) -> some View {
-        Button(role: role, action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: symbol)
-                    .font(.system(size: 11))
-                    .frame(width: 14)
-                Text(label)
-                    .font(theme.bodyFont(12))
-                Spacer(minLength: 0)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(role == .destructive ? Color.red : theme.textPrimary)
-    }
-
-}
