@@ -226,6 +226,12 @@ private struct ExperimentBlock: View {
                         selectedExperimentID = experiment.id
                         showingDetail = true
                     },
+                    onDoubleClick: {
+                        // The first click of the pair opened the popover; close it and
+                        // open the full editor sheet instead.
+                        showingDetail = false
+                        onEdit(experiment)
+                    },
                     onDragChanged: { translation in
                         selectedExperimentID = experiment.id
                         isDragging = true
@@ -312,6 +318,8 @@ private struct ExperimentBlock: View {
 /// so the math stays stable while the tracked view moves under the cursor mid-drag.
 private struct MouseTracker: NSViewRepresentable {
     var onClick: (() -> Void)? = nil
+    /// Fires on the second click of a double-click (the first click still fires onClick).
+    var onDoubleClick: (() -> Void)? = nil
     /// Click location in the tracker's own top-left-origin coordinates.
     var onClickAt: ((CGPoint) -> Void)? = nil
     var onDragChanged: ((CGSize) -> Void)? = nil
@@ -329,6 +337,7 @@ private struct MouseTracker: NSViewRepresentable {
 
     private func updateCallbacks(on view: TrackerView) {
         view.onClick = onClick
+        view.onDoubleClick = onDoubleClick
         view.onClickAt = onClickAt
         view.onDragChanged = onDragChanged
         view.onDragEnded = onDragEnded
@@ -336,6 +345,7 @@ private struct MouseTracker: NSViewRepresentable {
 
     final class TrackerView: NSView {
         var onClick: (() -> Void)?
+        var onDoubleClick: (() -> Void)?
         var onClickAt: ((CGPoint) -> Void)?
         var onDragChanged: ((CGSize) -> Void)?
         var onDragEnded: ((CGSize) -> Void)?
@@ -380,6 +390,8 @@ private struct MouseTracker: NSViewRepresentable {
             guard downLocation != nil else { return }
             if isDragging {
                 onDragEnded?(translation(to: event))
+            } else if event.clickCount >= 2, onDoubleClick != nil {
+                onDoubleClick?()
             } else {
                 onClick?()
                 onClickAt?(convert(event.locationInWindow, from: nil))
@@ -400,9 +412,6 @@ private struct ExperimentDetailPopover: View {
     /// Looked up live so the popover stays current if the store changes underneath it.
     let experimentID: UUID
     let onEdit: (ScheduledExperiment) -> Void
-
-    @State private var delayMinutes: Int = 30
-    @State private var showingShiftControls = false
 
     private var experiment: ScheduledExperiment? {
         store.scheduledExperiments.first(where: { $0.id == experimentID })
@@ -541,26 +550,33 @@ private struct ExperimentDetailPopover: View {
         }
 
         // Running behind: nudge this + every later experiment today by the same delay.
-        actionRow("clock.badge.exclamationmark", "Running behind…") {
-            withAnimation { showingShiftControls.toggle() }
-        }
-        if showingShiftControls {
-            HStack(spacing: 8) {
-                Stepper(value: $delayMinutes, in: -240...240, step: 15) {
-                    Text("\(delayMinutes >= 0 ? "+" : "")\(delayMinutes) min")
-                        .font(theme.bodyFont(11, weight: .medium))
+        // A fixed menu instead of an inline stepper — macOS popovers clip content that
+        // appears after the popover is already sized.
+        Menu {
+            ForEach([15, 30, 45, 60, 90, 120], id: \.self) { minutes in
+                Button("Delay by \(DurationText.format(minutes))") {
+                    shiftRestOfDay(from: experiment, by: minutes)
                 }
-                Button("Shift day") {
-                    let shifted = store.shiftDay(startingAt: experiment, by: delayMinutes)
-                    for item in shifted {
-                        appleCalendar.updatePushedEvent(for: item)
-                    }
-                    dismiss()
-                }
-                .font(theme.bodyFont(11))
             }
-            .padding(.leading, 22)
+            Divider()
+            ForEach([15, 30], id: \.self) { minutes in
+                Button("Move up by \(DurationText.format(minutes))") {
+                    shiftRestOfDay(from: experiment, by: -minutes)
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "clock.badge.exclamationmark")
+                    .font(.system(size: 11))
+                    .frame(width: 14)
+                Text("Running behind…")
+                    .font(theme.bodyFont(12))
+                Spacer(minLength: 0)
+            }
         }
+        .menuStyle(.borderlessButton)
+        .foregroundStyle(theme.textPrimary)
+        .help("Shift this and every later experiment today by the same amount")
 
         if let noteID = experiment.linkedNoteID, store.notes.contains(where: { $0.id == noteID }) {
             actionRow("book", "Open notebook entry") {
@@ -608,6 +624,14 @@ private struct ExperimentDetailPopover: View {
                 deleteAndCleanUp(experiment, wholeSeries: true)
             }
         }
+    }
+
+    private func shiftRestOfDay(from experiment: ScheduledExperiment, by minutes: Int) {
+        let shifted = store.shiftDay(startingAt: experiment, by: minutes)
+        for item in shifted {
+            appleCalendar.updatePushedEvent(for: item)
+        }
+        dismiss()
     }
 
     private func deleteAndCleanUp(_ experiment: ScheduledExperiment, wholeSeries: Bool) {
