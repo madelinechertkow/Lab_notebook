@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct ZycasApp: App {
+struct CazzyApp: App {
     @StateObject private var store = NoteStore()
     @StateObject private var themeStore = ThemeStore()
 
@@ -15,6 +15,14 @@ struct ZycasApp: App {
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
         .defaultSize(width: 1100, height: 700)
+
+        WindowGroup(id: "todo") {
+            TodoListView()
+                .environmentObject(store)
+                .environmentObject(themeStore)
+                .frame(minWidth: 300, minHeight: 360)
+        }
+        .defaultSize(width: 360, height: 480)
 
         Settings {
             SettingsView()

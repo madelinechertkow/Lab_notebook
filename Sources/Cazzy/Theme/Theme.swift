@@ -106,8 +106,7 @@ struct AppTheme: Codable, Equatable {
     var tertiaryAccentHex: UInt32
 
     var backgroundHex: UInt32
-    var sidebarTopHex: UInt32
-    var sidebarBottomHex: UInt32
+    var sidebarHex: UInt32
     var cardBackgroundHex: UInt32
     var editorBackgroundHex: UInt32
 
@@ -141,8 +140,7 @@ struct AppTheme: Codable, Equatable {
         }
 
         let background = mixHex(lightBase, 0xFFFFFF, 0.5)
-        let sidebarTop = mixHex(lightest, 0xFFFFFF, 0.35)
-        let sidebarBottom = mixHex(bySaturation[2], 0xFFFFFF, 0.55)
+        let sidebar = mixHex(lightest, 0xFFFFFF, 0.4)
         let cardBackground = mixHex(lightBase, 0xFFFFFF, 0.82)
         let editorBackground = mixHex(lightBase, 0xFFFFFF, 0.76)
 
@@ -158,7 +156,7 @@ struct AppTheme: Codable, Equatable {
         return AppTheme(
             name: name,
             accentHex: accent, accentDeepHex: accentDeep, secondaryAccentHex: secondaryAccent, tertiaryAccentHex: tertiaryAccent,
-            backgroundHex: background, sidebarTopHex: sidebarTop, sidebarBottomHex: sidebarBottom,
+            backgroundHex: background, sidebarHex: sidebar,
             cardBackgroundHex: cardBackground, editorBackgroundHex: editorBackground,
             textPrimaryHex: textPrimary, textSecondaryHex: textSecondary, textTertiaryHex: textTertiary, dividerHex: divider,
             displayFont: displayFont, bodyFont: bodyFont

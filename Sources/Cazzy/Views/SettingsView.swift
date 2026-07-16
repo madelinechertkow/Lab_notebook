@@ -23,7 +23,7 @@ struct SettingsView: View {
                 ColorPicker("Accent", selection: binding(\.accentHex))
                 ColorPicker("Secondary accent", selection: binding(\.secondaryAccentHex))
                 ColorPicker("Background", selection: binding(\.backgroundHex))
-                ColorPicker("Sidebar", selection: binding(\.sidebarTopHex))
+                ColorPicker("Sidebar", selection: binding(\.sidebarHex))
                 ColorPicker("Text", selection: binding(\.textPrimaryHex))
             }
 

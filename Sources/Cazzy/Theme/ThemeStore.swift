@@ -10,7 +10,7 @@ final class ThemeStore: ObservableObject {
 
     init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = appSupport.appendingPathComponent("Zycas", isDirectory: true)
+        let dir = appSupport.appendingPathComponent("Cazzy", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         fileURL = dir.appendingPathComponent("theme.json")
 
@@ -47,13 +47,7 @@ final class ThemeStore: ObservableObject {
     var textTertiary: Color { Color(hex: theme.textTertiaryHex) }
     var divider: Color { Color(hex: theme.dividerHex) }
 
-    var sidebarGradient: LinearGradient {
-        LinearGradient(
-            colors: [Color(hex: theme.sidebarTopHex), Color(hex: theme.sidebarBottomHex)],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-    }
+    var sidebar: Color { Color(hex: theme.sidebarHex) }
 
     func notebookAccent(_ index: Int) -> Color {
         let palette = [accent, secondaryAccent, tertiaryAccent, accentDeep]

@@ -4,13 +4,14 @@ import Combine
 final class NoteStore: ObservableObject {
     @Published var notebooks: [Notebook] = []
     @Published var notes: [Note] = []
+    @Published var todos: [TodoItem] = []
     @Published var labModeFilter: LabModeFilter = .all
 
     private let fileURL: URL
 
     init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = appSupport.appendingPathComponent("Zycas", isDirectory: true)
+        let dir = appSupport.appendingPathComponent("Cazzy", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         self.fileURL = dir.appendingPathComponent("data.json")
         if let raw = UserDefaults.standard.string(forKey: "labModeFilter"), let mode = LabModeFilter(rawValue: raw) {
@@ -31,6 +32,24 @@ final class NoteStore: ObservableObject {
     private struct SavedData: Codable {
         var notebooks: [Notebook]
         var notes: [Note]
+        var todos: [TodoItem]
+
+        enum CodingKeys: String, CodingKey {
+            case notebooks, notes, todos
+        }
+
+        init(notebooks: [Notebook], notes: [Note], todos: [TodoItem]) {
+            self.notebooks = notebooks
+            self.notes = notes
+            self.todos = todos
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            notebooks = try container.decode([Notebook].self, forKey: .notebooks)
+            notes = try container.decode([Note].self, forKey: .notes)
+            todos = try container.decodeIfPresent([TodoItem].self, forKey: .todos) ?? []
+        }
     }
 
     func load() {
@@ -41,10 +60,11 @@ final class NoteStore: ObservableObject {
         }
         self.notebooks = decoded.notebooks
         self.notes = decoded.notes
+        self.todos = decoded.todos
     }
 
     func save() {
-        let payload = SavedData(notebooks: notebooks, notes: notes)
+        let payload = SavedData(notebooks: notebooks, notes: notes, todos: todos)
         guard let data = try? JSONEncoder().encode(payload) else { return }
         try? data.write(to: fileURL, options: .atomic)
     }
@@ -89,6 +109,29 @@ final class NoteStore: ObservableObject {
 
     func deleteNote(_ note: Note) {
         notes.removeAll { $0.id == note.id }
+        save()
+    }
+
+    func addTodo(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        todos.append(TodoItem(text: trimmed))
+        save()
+    }
+
+    func toggleTodo(_ item: TodoItem) {
+        guard let idx = todos.firstIndex(where: { $0.id == item.id }) else { return }
+        todos[idx].isDone.toggle()
+        save()
+    }
+
+    func deleteTodo(_ item: TodoItem) {
+        todos.removeAll { $0.id == item.id }
+        save()
+    }
+
+    func clearCompletedTodos() {
+        todos.removeAll { $0.isDone }
         save()
     }
 
