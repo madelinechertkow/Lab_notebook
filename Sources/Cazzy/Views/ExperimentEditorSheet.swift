@@ -16,7 +16,6 @@ struct ExperimentEditorSheet: View {
     @State private var durationMinutes: Int
     @State private var color: ExperimentColor
     @State private var notes: String
-    @State private var pushToApple: Bool
 
     // Recurrence (create mode only; occurrences are materialized on save).
     private enum RecurrenceChoice: String, CaseIterable, Identifiable {
@@ -37,7 +36,6 @@ struct ExperimentEditorSheet: View {
         _durationMinutes = State(initialValue: existing?.durationMinutes ?? prefilledProtocol?.effectiveTotalMinutes ?? 60)
         _color = State(initialValue: existing?.color ?? .teal)
         _notes = State(initialValue: existing?.notes ?? "")
-        _pushToApple = State(initialValue: existing?.appleCalendarEventID != nil)
         _recurrenceEnd = State(initialValue: Calendar.current.date(byAdding: .weekOfYear, value: 2, to: existing?.start ?? defaultStart) ?? defaultStart)
     }
 
@@ -83,17 +81,15 @@ struct ExperimentEditorSheet: View {
                 recurrenceRow
             }
 
-            Toggle(isOn: $pushToApple) {
-                Text("Add to Apple Calendar (shows on your other devices)")
-                    .font(theme.bodyFont(12))
-                    .foregroundStyle(theme.textPrimary)
-            }
-            .toggleStyle(.checkbox)
-            .disabled(appleCalendar.accessState != .granted)
-            if appleCalendar.accessState != .granted {
-                Text("Requires calendar access — grant it in System Settings → Privacy & Security → Calendars.")
-                    .font(theme.bodyFont(10))
-                    .foregroundStyle(theme.textTertiary)
+            if store.syncToAppleCalendar {
+                Label(
+                    appleCalendar.accessState == .granted
+                        ? "Will be added to your Apple Calendar (change in Settings)"
+                        : "Apple Calendar sync is on, but calendar access hasn't been granted",
+                    systemImage: appleCalendar.accessState == .granted ? "calendar.badge.checkmark" : "calendar.badge.exclamationmark"
+                )
+                .font(theme.bodyFont(10))
+                .foregroundStyle(theme.textTertiary)
             }
 
             HStack {
@@ -253,7 +249,6 @@ struct ExperimentEditorSheet: View {
         let trimmedTitle = title.trimmingCharacters(in: .whitespaces)
 
         if var updated = existing {
-            let timesChanged = updated.start != start || updated.durationMinutes != durationMinutes || updated.title != trimmedTitle
             updated.title = trimmedTitle
             updated.protocolID = protocolID
             updated.start = start
@@ -261,13 +256,10 @@ struct ExperimentEditorSheet: View {
             updated.color = color
             updated.notes = notes
 
-            if pushToApple, updated.appleCalendarEventID == nil {
-                updated.appleCalendarEventID = appleCalendar.pushEvent(for: updated)
-            } else if !pushToApple, let eventID = updated.appleCalendarEventID {
-                appleCalendar.removePushedEvent(id: eventID)
-                updated.appleCalendarEventID = nil
-            } else if pushToApple, timesChanged {
+            if updated.appleCalendarEventID != nil {
                 appleCalendar.updatePushedEvent(for: updated)
+            } else if store.syncToAppleCalendar {
+                updated.appleCalendarEventID = appleCalendar.pushEvent(for: updated)
             }
             store.updateScheduledExperiment(updated)
         } else {
@@ -286,7 +278,7 @@ struct ExperimentEditorSheet: View {
             case .weekly: recurrence = .weekly
             }
             let created = store.scheduleExperiment(experiment, recurrence: recurrence, until: recurrenceChoice == .none ? nil : recurrenceEnd)
-            if pushToApple {
+            if store.syncToAppleCalendar {
                 for var occurrence in created {
                     occurrence.appleCalendarEventID = appleCalendar.pushEvent(for: occurrence)
                     if occurrence.appleCalendarEventID != nil {

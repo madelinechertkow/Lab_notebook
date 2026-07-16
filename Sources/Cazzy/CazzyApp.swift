@@ -59,6 +59,7 @@ struct CazzyApp: App {
 
         Settings {
             SettingsView()
+                .environmentObject(store)
                 .environmentObject(themeStore)
         }
     }

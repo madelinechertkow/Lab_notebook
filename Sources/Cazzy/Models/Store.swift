@@ -8,6 +8,8 @@ final class NoteStore: ObservableObject {
     @Published var protocols: [LabProtocol] = []
     @Published var scheduledExperiments: [ScheduledExperiment] = []
     @Published var labModeFilter: LabModeFilter = .all
+    /// App-level preference: automatically mirror scheduled experiments to Apple Calendar.
+    @Published var syncToAppleCalendar: Bool = false
 
     // Cross-window signals (not persisted): windows can't talk to each other directly,
     // so requests are parked on the shared store for the target window to pick up and clear.
@@ -40,12 +42,18 @@ final class NoteStore: ObservableObject {
         if let raw = UserDefaults.standard.string(forKey: "labModeFilter"), let mode = LabModeFilter(rawValue: raw) {
             self.labModeFilter = mode
         }
+        self.syncToAppleCalendar = UserDefaults.standard.bool(forKey: "syncToAppleCalendar")
         load()
     }
 
     func setLabModeFilter(_ mode: LabModeFilter) {
         labModeFilter = mode
         UserDefaults.standard.set(mode.rawValue, forKey: "labModeFilter")
+    }
+
+    func setSyncToAppleCalendar(_ enabled: Bool) {
+        syncToAppleCalendar = enabled
+        UserDefaults.standard.set(enabled, forKey: "syncToAppleCalendar")
     }
 
     func visibleNotebooks() -> [Notebook] {

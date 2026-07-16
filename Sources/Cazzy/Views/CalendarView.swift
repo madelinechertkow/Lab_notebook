@@ -59,11 +59,21 @@ struct CalendarView: View {
         }
         .background(CalendarKeyCatcher(onDeleteKey: deleteSelectedExperiment))
         .onAppear {
+            appleCalendar.excludedEventIDs = Set(store.scheduledExperiments.compactMap(\.appleCalendarEventID))
             appleCalendar.requestAccessAndRefresh(for: weekInterval)
             consumePendingScheduleRequest()
         }
         .onChange(of: weekStart) { _ in
             appleCalendar.refreshBusyIntervals(for: weekInterval)
+        }
+        .onReceive(store.$scheduledExperiments) { experiments in
+            // Keep the self-exclusion set current so experiments never "conflict" with
+            // their own pushed Apple Calendar mirrors.
+            let ids = Set(experiments.compactMap(\.appleCalendarEventID))
+            if ids != appleCalendar.excludedEventIDs {
+                appleCalendar.excludedEventIDs = ids
+                appleCalendar.refreshBusyIntervals(for: weekInterval)
+            }
         }
         .onReceive(store.$pendingScheduleProtocolID) { _ in
             consumePendingScheduleRequest()

@@ -1,10 +1,21 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @EnvironmentObject var store: NoteStore
     @EnvironmentObject var theme: ThemeStore
 
     var body: some View {
         Form {
+            Section("Calendar") {
+                Toggle("Automatically add scheduled experiments to Apple Calendar", isOn: Binding(
+                    get: { store.syncToAppleCalendar },
+                    set: { store.setSyncToAppleCalendar($0) }
+                ))
+                Text("New experiments are mirrored to your default calendar so they show up on your other devices. Individual experiments can still be added or removed from the calendar via their popover.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Presets") {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 16) {
@@ -54,7 +65,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 440, height: 540)
+        .frame(width: 440, height: 620)
     }
 
     private func binding(_ keyPath: WritableKeyPath<AppTheme, UInt32>) -> Binding<Color> {

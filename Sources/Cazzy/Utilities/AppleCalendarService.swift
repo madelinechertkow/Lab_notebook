@@ -20,6 +20,11 @@ final class AppleCalendarService: ObservableObject {
     /// Busy intervals for the most recently requested date range, oldest first.
     @Published private(set) var busyIntervals: [DateInterval] = []
 
+    /// Identifiers of events Cazzy itself pushed. These are excluded from busy/free math —
+    /// otherwise an experiment would "conflict" with its own Apple Calendar mirror.
+    /// The calendar window seeds this from the store; pushEvent keeps it current in-session.
+    var excludedEventIDs: Set<String> = []
+
     private let eventStore = EKEventStore()
     private var lastFetchedRange: DateInterval?
 
@@ -100,7 +105,7 @@ final class AppleCalendarService: ObservableObject {
         let predicate = eventStore.predicateForEvents(withStart: range.start, end: range.end, calendars: nil)
         let events = eventStore.events(matching: predicate)
         let intervals = events
-            .filter { !$0.isAllDay }
+            .filter { !$0.isAllDay && !isPushedByCazzy($0) }
             .compactMap { event -> DateInterval? in
                 guard let start = event.startDate, let end = event.endDate, end > start else { return nil }
                 return DateInterval(start: start, end: end)
@@ -109,13 +114,19 @@ final class AppleCalendarService: ObservableObject {
         busyIntervals = intervals
     }
 
+    private func isPushedByCazzy(_ event: EKEvent) -> Bool {
+        guard let id = event.eventIdentifier else { return false }
+        return excludedEventIDs.contains(id)
+    }
+
     /// Whether the user has no Apple Calendar event overlapping `interval`.
     /// Queries the store directly so it works for dates outside the fetched week too.
     func isFree(_ interval: DateInterval) -> Bool {
         guard accessState == .granted else { return true }
         let predicate = eventStore.predicateForEvents(withStart: interval.start, end: interval.end, calendars: nil)
         return !eventStore.events(matching: predicate).contains { event in
-            guard !event.isAllDay, let start = event.startDate, let end = event.endDate else { return false }
+            guard !event.isAllDay, !isPushedByCazzy(event),
+                  let start = event.startDate, let end = event.endDate else { return false }
             return DateInterval(start: start, end: end).intersects(interval)
         }
     }
@@ -141,6 +152,9 @@ final class AppleCalendarService: ObservableObject {
         event.notes = "Scheduled in Cazzy"
         do {
             try eventStore.save(event, span: .thisEvent)
+            if let id = event.eventIdentifier {
+                excludedEventIDs.insert(id)
+            }
             return event.eventIdentifier
         } catch {
             return nil
