@@ -7,10 +7,6 @@ enum SidebarItem: Hashable {
     case protocols
 }
 
-func openCazzyPreferences() {
-    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-}
-
 struct SidebarView: View {
     @EnvironmentObject var store: NoteStore
     @EnvironmentObject var theme: ThemeStore
@@ -158,15 +154,6 @@ struct SidebarView: View {
                         .font(theme.displayFont(20))
                         .foregroundStyle(theme.textPrimary)
                     Spacer()
-                    Button {
-                        openCazzyPreferences()
-                    } label: {
-                        Image(systemName: "paintpalette.fill")
-                            .font(.system(size: 13))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(theme.textSecondary)
-                    .help("Customize appearance")
                 }
 
                 Picker("", selection: Binding(
