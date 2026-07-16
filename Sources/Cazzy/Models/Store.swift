@@ -112,10 +112,10 @@ final class NoteStore: ObservableObject {
         save()
     }
 
-    func addTodo(_ text: String) {
+    func addTodo(_ text: String, weekday: Weekday = .today) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        todos.append(TodoItem(text: trimmed))
+        todos.append(TodoItem(text: trimmed, weekday: weekday))
         save()
     }
 
@@ -130,8 +130,22 @@ final class NoteStore: ObservableObject {
         save()
     }
 
-    func clearCompletedTodos() {
-        todos.removeAll { $0.isDone }
+    func setTodoWeekday(_ item: TodoItem, weekday: Weekday) {
+        guard let idx = todos.firstIndex(where: { $0.id == item.id }) else { return }
+        todos[idx].weekday = weekday
+        save()
+    }
+
+    func todos(for weekday: Weekday) -> [TodoItem] {
+        todos.filter { $0.weekday == weekday }
+    }
+
+    func clearCompletedTodos(weekday: Weekday? = nil) {
+        if let weekday {
+            todos.removeAll { $0.isDone && $0.weekday == weekday }
+        } else {
+            todos.removeAll { $0.isDone }
+        }
         save()
     }
 
