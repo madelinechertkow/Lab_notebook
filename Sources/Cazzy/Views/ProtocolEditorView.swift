@@ -13,6 +13,8 @@ struct ProtocolEditorView: View {
     @State private var steps: [ProtocolStep] = []
     @State private var tags: [String] = []
     @State private var newTag: String = ""
+    @State private var manualTotalMinutes: Int?
+    @Environment(\.openWindow) private var openWindow
 
     @State private var showingSaveVersionPopover = false
     @State private var changeNoteDraft = ""
@@ -45,6 +47,7 @@ struct ProtocolEditorView: View {
         .background(theme.editorBackground)
         .onAppear(perform: loadFromProtocol)
         .onChange(of: protocolID) { _ in loadFromProtocol() }
+        .onChange(of: store.undoTick) { _ in loadFromProtocol() }
         .alert(
             "Couldn't export protocol",
             isPresented: Binding(
@@ -101,6 +104,11 @@ struct ProtocolEditorView: View {
 
                 actionButton("archivebox", showingVersionHistory ? "Hide History" : "Version History") {
                     showingVersionHistory.toggle()
+                }
+
+                actionButton("calendar.badge.plus", "Schedule…") {
+                    store.pendingScheduleProtocolID = protocolID
+                    openWindow(id: "calendar")
                 }
 
                 Spacer()
@@ -241,6 +249,7 @@ struct ProtocolEditorView: View {
                     .onDrop(of: [.text], delegate: StepDropDelegate(targetID: step.id, steps: $steps, draggedStepID: $draggedStepID, onFinished: persist))
                 }
             }
+            totalTimeRow
         }
         .onChange(of: steps) { _ in
             // While a drag is live, reordering is purely in-memory + animated; writing to disk
@@ -249,6 +258,82 @@ struct ProtocolEditorView: View {
             guard draggedStepID == nil else { return }
             persist()
         }
+    }
+
+    /// Shows the auto-summed step time and an optional manual override used when the
+    /// protocol is scheduled on the calendar. `manualTotalMinutes` is canonical; the
+    /// hours/minutes fields are two views onto it (same pattern as StepRow durations).
+    private var totalTimeRow: some View {
+        let stepSum = steps.filter { $0.kind == .step }.compactMap(\.durationMinutes).reduce(0, +)
+        return HStack(spacing: 8) {
+            Image(systemName: "timer")
+                .font(.system(size: 11))
+                .foregroundStyle(theme.accentDeep)
+            Text(stepSum > 0 ? "Total from steps: \(Self.formatMinutes(stepSum))" : "No step timings yet")
+                .font(theme.bodyFont(12))
+                .foregroundStyle(theme.textSecondary)
+
+            Spacer()
+
+            Text("Override for scheduling:")
+                .font(theme.bodyFont(11))
+                .foregroundStyle(theme.textTertiary)
+            TextField("h", text: overrideHoursText)
+                .textFieldStyle(.plain)
+                .font(theme.bodyFont(12))
+                .multilineTextAlignment(.trailing)
+                .frame(width: 26)
+            Text("hr")
+                .font(theme.bodyFont(11))
+                .foregroundStyle(theme.textTertiary)
+            TextField("m", text: overrideMinutesText)
+                .textFieldStyle(.plain)
+                .font(theme.bodyFont(12))
+                .multilineTextAlignment(.trailing)
+                .frame(width: 26)
+            Text("min")
+                .font(theme.bodyFont(11))
+                .foregroundStyle(theme.textTertiary)
+        }
+        .padding(8)
+        .softCard(cornerRadius: 8)
+    }
+
+    private var overrideHoursText: Binding<String> {
+        Binding(
+            get: {
+                guard let total = manualTotalMinutes, total >= 60 else { return "" }
+                return String(total / 60)
+            },
+            set: { newValue in
+                let hours = max(0, Int(newValue.trimmingCharacters(in: .whitespaces)) ?? 0)
+                let minutesPart = (manualTotalMinutes ?? 0) % 60
+                let total = hours * 60 + minutesPart
+                manualTotalMinutes = total == 0 ? nil : total
+                persist()
+            }
+        )
+    }
+
+    private var overrideMinutesText: Binding<String> {
+        Binding(
+            get: {
+                guard let total = manualTotalMinutes else { return "" }
+                let minutes = total % 60
+                return minutes == 0 && total < 60 ? "" : String(minutes)
+            },
+            set: { newValue in
+                let minutes = max(0, min(59, Int(newValue.trimmingCharacters(in: .whitespaces)) ?? 0))
+                let hoursPart = (manualTotalMinutes ?? 0) / 60
+                let total = hoursPart * 60 + minutes
+                manualTotalMinutes = total == 0 ? nil : total
+                persist()
+            }
+        )
+    }
+
+    static func formatMinutes(_ total: Int) -> String {
+        DurationText.format(total)
     }
 
     private func addStep(kind: StepKind = .step) {
@@ -336,6 +421,7 @@ struct ProtocolEditorView: View {
         reagents = currentProtocol.reagents
         steps = currentProtocol.steps
         tags = currentProtocol.tags
+        manualTotalMinutes = currentProtocol.manualTotalMinutes
     }
 
     private func persist() {
@@ -345,6 +431,7 @@ struct ProtocolEditorView: View {
         updated.reagents = reagents
         updated.steps = steps
         updated.tags = tags
+        updated.manualTotalMinutes = manualTotalMinutes
         store.updateProtocolDraft(updated)
     }
 

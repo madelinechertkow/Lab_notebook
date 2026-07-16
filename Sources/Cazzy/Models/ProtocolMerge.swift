@@ -121,7 +121,10 @@ enum ProtocolMerge {
         let reagents = resolveItems(result.reagentDiffs, choices: reagentChoices, includedIDs: includedReagentIDs)
         let steps = resolveItems(result.stepDiffs, choices: stepChoices, includedIDs: includedStepIDs)
 
-        return ProtocolVersionSnapshot(name: name, purpose: purpose, reagents: reagents, steps: steps, tags: result.tags)
+        // Total-time override isn't worth its own conflict UI: keep local's, fall back to imported's.
+        let manualTotalMinutes = result.local.manualTotalMinutes ?? result.imported.manualTotalMinutes
+
+        return ProtocolVersionSnapshot(name: name, purpose: purpose, reagents: reagents, steps: steps, tags: result.tags, manualTotalMinutes: manualTotalMinutes)
     }
 
     private static func resolveItems<T: Identifiable & Equatable>(

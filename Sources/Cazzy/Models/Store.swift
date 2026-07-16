@@ -6,9 +6,31 @@ final class NoteStore: ObservableObject {
     @Published var notes: [Note] = []
     @Published var todos: [TodoItem] = []
     @Published var protocols: [LabProtocol] = []
+    @Published var scheduledExperiments: [ScheduledExperiment] = []
     @Published var labModeFilter: LabModeFilter = .all
 
+    // Cross-window signals (not persisted): windows can't talk to each other directly,
+    // so requests are parked on the shared store for the target window to pick up and clear.
+    /// Set by the calendar window to ask the main window to open a specific note.
+    @Published var pendingOpenNoteID: UUID?
+    /// Set by the protocol editor to ask the calendar window to open a prefilled "new experiment" sheet.
+    @Published var pendingScheduleProtocolID: UUID?
+
+    /// Bumped whenever undo/redo replaces the published state wholesale. Editor views that
+    /// hold local @State copies (note editor, protocol editor) watch this to reload.
+    @Published private(set) var undoTick = 0
+
     private let fileURL: URL
+
+    // Whole-state snapshots make undo trivially correct for every mutation because all
+    // writes funnel through save(). Rapid-fire saves (typing persists per keystroke) are
+    // coalesced so one undo steps back a whole burst, not one character.
+    private var undoStack: [SavedData] = []
+    private var redoStack: [SavedData] = []
+    private var lastSavedState: SavedData?
+    private var lastUndoPushAt: Date?
+    private static let undoCoalescingInterval: TimeInterval = 2.0
+    private static let undoStackLimit = 100
 
     init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -30,21 +52,23 @@ final class NoteStore: ObservableObject {
         notebooks.filter { labModeFilter.matches($0.labMode) }
     }
 
-    private struct SavedData: Codable {
+    private struct SavedData: Codable, Equatable {
         var notebooks: [Notebook]
         var notes: [Note]
         var todos: [TodoItem]
         var protocols: [LabProtocol]
+        var scheduledExperiments: [ScheduledExperiment]
 
         enum CodingKeys: String, CodingKey {
-            case notebooks, notes, todos, protocols
+            case notebooks, notes, todos, protocols, scheduledExperiments
         }
 
-        init(notebooks: [Notebook], notes: [Note], todos: [TodoItem], protocols: [LabProtocol]) {
+        init(notebooks: [Notebook], notes: [Note], todos: [TodoItem], protocols: [LabProtocol], scheduledExperiments: [ScheduledExperiment]) {
             self.notebooks = notebooks
             self.notes = notes
             self.todos = todos
             self.protocols = protocols
+            self.scheduledExperiments = scheduledExperiments
         }
 
         init(from decoder: Decoder) throws {
@@ -53,6 +77,7 @@ final class NoteStore: ObservableObject {
             notes = try container.decode([Note].self, forKey: .notes)
             todos = try container.decodeIfPresent([TodoItem].self, forKey: .todos) ?? []
             protocols = try container.decodeIfPresent([LabProtocol].self, forKey: .protocols) ?? []
+            scheduledExperiments = try container.decodeIfPresent([ScheduledExperiment].self, forKey: .scheduledExperiments) ?? []
         }
     }
 
@@ -66,12 +91,63 @@ final class NoteStore: ObservableObject {
         self.notes = decoded.notes
         self.todos = decoded.todos
         self.protocols = decoded.protocols
+        self.scheduledExperiments = decoded.scheduledExperiments
+        self.lastSavedState = decoded
     }
 
     func save() {
-        let payload = SavedData(notebooks: notebooks, notes: notes, todos: todos, protocols: protocols)
-        guard let data = try? JSONEncoder().encode(payload) else { return }
+        let current = currentState()
+        recordUndoSnapshot(before: current)
+        persist(current)
+    }
+
+    private func currentState() -> SavedData {
+        SavedData(notebooks: notebooks, notes: notes, todos: todos, protocols: protocols, scheduledExperiments: scheduledExperiments)
+    }
+
+    private func persist(_ state: SavedData) {
+        guard let data = try? JSONEncoder().encode(state) else { return }
         try? data.write(to: fileURL, options: .atomic)
+        lastSavedState = state
+    }
+
+    // MARK: - Undo / Redo (⌘Z / ⇧⌘Z, app-wide)
+
+    private func recordUndoSnapshot(before current: SavedData) {
+        guard let previous = lastSavedState, previous != current else { return }
+        redoStack.removeAll()
+        let now = Date()
+        // Within the coalescing window, the stack keeps the burst's starting state.
+        if let lastPush = lastUndoPushAt, now.timeIntervalSince(lastPush) < Self.undoCoalescingInterval { return }
+        undoStack.append(previous)
+        if undoStack.count > Self.undoStackLimit {
+            undoStack.removeFirst()
+        }
+        lastUndoPushAt = now
+    }
+
+    func undo() {
+        guard let previous = undoStack.popLast() else { return }
+        redoStack.append(currentState())
+        applyRestoredState(previous)
+    }
+
+    func redo() {
+        guard let next = redoStack.popLast() else { return }
+        undoStack.append(currentState())
+        applyRestoredState(next)
+    }
+
+    private func applyRestoredState(_ state: SavedData) {
+        notebooks = state.notebooks
+        notes = state.notes
+        todos = state.todos
+        protocols = state.protocols
+        scheduledExperiments = state.scheduledExperiments
+        // Break the coalescing window so the next edit gets its own undo step.
+        lastUndoPushAt = nil
+        persist(state)
+        undoTick += 1
     }
 
     func notes(in notebookID: UUID?) -> [Note] {

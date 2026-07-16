@@ -62,6 +62,7 @@ extension NoteStore {
         protocols[idx].reagents = snapshot.reagents
         protocols[idx].steps = snapshot.steps
         protocols[idx].tags = snapshot.tags
+        protocols[idx].manualTotalMinutes = snapshot.manualTotalMinutes
         protocols[idx].updatedAt = Date()
         save()
     }

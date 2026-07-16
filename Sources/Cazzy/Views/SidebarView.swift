@@ -62,6 +62,32 @@ struct SidebarView: View {
                 }
                 .buttonStyle(.plain)
 
+                Button {
+                    openWindow(id: "calendar")
+                } label: {
+                    Label {
+                        HStack {
+                            Text("Calendar")
+                                .font(theme.bodyFont(13, weight: .medium))
+                                .foregroundStyle(theme.textPrimary)
+                            Spacer()
+                            let todayCount = store.experiments(on: Date()).count
+                            if todayCount > 0 {
+                                Text("\(todayCount)")
+                                    .font(theme.bodyFont(11))
+                                    .foregroundStyle(theme.textSecondary)
+                            }
+                            Image(systemName: "arrow.up.forward.app")
+                                .font(.system(size: 10))
+                                .foregroundStyle(theme.textTertiary)
+                        }
+                    } icon: {
+                        Image(systemName: "calendar")
+                            .foregroundStyle(theme.accent)
+                    }
+                }
+                .buttonStyle(.plain)
+
                 Label {
                     HStack {
                         Text("Protocols")

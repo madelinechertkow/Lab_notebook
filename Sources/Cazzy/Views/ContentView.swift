@@ -43,5 +43,17 @@ struct ContentView: View {
                 sidebarSelection = .all
             }
         }
+        .onReceive(store.$pendingOpenNoteID) { noteID in
+            // The calendar window asks the main window to show a note this way.
+            guard let noteID, let note = store.notes.first(where: { $0.id == noteID }) else { return }
+            store.pendingOpenNoteID = nil
+            sidebarSelection = store.visibleNotebooks().contains(where: { $0.id == note.notebookID })
+                ? .notebook(note.notebookID)
+                : .all
+            // The selection onChange above clears the note id, so set it after this turn.
+            DispatchQueue.main.async {
+                selectedNoteID = noteID
+            }
+        }
     }
 }

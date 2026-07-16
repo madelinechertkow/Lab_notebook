@@ -88,6 +88,7 @@ struct EditorView: View {
         .background(theme.editorBackground)
         .onAppear(perform: loadFromNote)
         .onChange(of: noteID) { _ in loadFromNote() }
+        .onChange(of: store.undoTick) { _ in loadFromNote() }
     }
 
     private func loadFromNote() {

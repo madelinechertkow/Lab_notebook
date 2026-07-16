@@ -111,17 +111,19 @@ struct ProtocolVersionSnapshot: Codable, Equatable {
     var reagents: [Reagent]
     var steps: [ProtocolStep]
     var tags: [String]
+    var manualTotalMinutes: Int?
 
     enum CodingKeys: String, CodingKey {
-        case name, purpose, reagents, steps, tags
+        case name, purpose, reagents, steps, tags, manualTotalMinutes
     }
 
-    init(name: String, purpose: String = "", reagents: [Reagent] = [], steps: [ProtocolStep] = [], tags: [String] = []) {
+    init(name: String, purpose: String = "", reagents: [Reagent] = [], steps: [ProtocolStep] = [], tags: [String] = [], manualTotalMinutes: Int? = nil) {
         self.name = name
         self.purpose = purpose
         self.reagents = reagents
         self.steps = steps
         self.tags = tags
+        self.manualTotalMinutes = manualTotalMinutes
     }
 
     init(from decoder: Decoder) throws {
@@ -131,6 +133,7 @@ struct ProtocolVersionSnapshot: Codable, Equatable {
         reagents = try container.decodeIfPresent([Reagent].self, forKey: .reagents) ?? []
         steps = try container.decodeIfPresent([ProtocolStep].self, forKey: .steps) ?? []
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        manualTotalMinutes = try container.decodeIfPresent(Int.self, forKey: .manualTotalMinutes)
     }
 }
 
@@ -172,6 +175,8 @@ struct LabProtocol: Identifiable, Codable, Equatable {
     var reagents: [Reagent] = []
     var steps: [ProtocolStep] = []
     var tags: [String] = []
+    /// User-entered total time override for scheduling; nil means "use the step-duration sum".
+    var manualTotalMinutes: Int?
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
     /// Saved version history. The fields above are the live, editable draft;
@@ -187,6 +192,7 @@ struct LabProtocol: Identifiable, Codable, Equatable {
         reagents: [Reagent] = [],
         steps: [ProtocolStep] = [],
         tags: [String] = [],
+        manualTotalMinutes: Int? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         versions: [ProtocolVersion] = [],
@@ -198,6 +204,7 @@ struct LabProtocol: Identifiable, Codable, Equatable {
         self.reagents = reagents
         self.steps = steps
         self.tags = tags
+        self.manualTotalMinutes = manualTotalMinutes
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.versions = versions
@@ -205,7 +212,7 @@ struct LabProtocol: Identifiable, Codable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, purpose, reagents, steps, tags, createdAt, updatedAt, versions, currentVersionNumber
+        case id, name, purpose, reagents, steps, tags, manualTotalMinutes, createdAt, updatedAt, versions, currentVersionNumber
     }
 
     init(from decoder: Decoder) throws {
@@ -216,6 +223,7 @@ struct LabProtocol: Identifiable, Codable, Equatable {
         reagents = try container.decodeIfPresent([Reagent].self, forKey: .reagents) ?? []
         steps = try container.decodeIfPresent([ProtocolStep].self, forKey: .steps) ?? []
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        manualTotalMinutes = try container.decodeIfPresent(Int.self, forKey: .manualTotalMinutes)
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
         versions = try container.decodeIfPresent([ProtocolVersion].self, forKey: .versions) ?? []
@@ -223,7 +231,19 @@ struct LabProtocol: Identifiable, Codable, Equatable {
     }
 
     var draftSnapshot: ProtocolVersionSnapshot {
-        ProtocolVersionSnapshot(name: name, purpose: purpose, reagents: reagents, steps: steps, tags: tags)
+        ProtocolVersionSnapshot(name: name, purpose: purpose, reagents: reagents, steps: steps, tags: tags, manualTotalMinutes: manualTotalMinutes)
+    }
+
+    /// Sum of the durations entered on numbered steps (notes/warnings excluded).
+    var stepDurationSum: Int {
+        steps.filter { $0.kind == .step }.compactMap(\.durationMinutes).reduce(0, +)
+    }
+
+    /// The duration used when scheduling this protocol: the manual override if set,
+    /// otherwise the step-duration sum, or nil if neither gives a usable value.
+    var effectiveTotalMinutes: Int? {
+        if let manualTotalMinutes, manualTotalMinutes > 0 { return manualTotalMinutes }
+        return stepDurationSum > 0 ? stepDurationSum : nil
     }
 }
 
