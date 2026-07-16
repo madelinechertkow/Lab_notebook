@@ -5,6 +5,7 @@ final class NoteStore: ObservableObject {
     @Published var notebooks: [Notebook] = []
     @Published var notes: [Note] = []
     @Published var todos: [TodoItem] = []
+    @Published var protocols: [LabProtocol] = []
     @Published var labModeFilter: LabModeFilter = .all
 
     private let fileURL: URL
@@ -33,15 +34,17 @@ final class NoteStore: ObservableObject {
         var notebooks: [Notebook]
         var notes: [Note]
         var todos: [TodoItem]
+        var protocols: [LabProtocol]
 
         enum CodingKeys: String, CodingKey {
-            case notebooks, notes, todos
+            case notebooks, notes, todos, protocols
         }
 
-        init(notebooks: [Notebook], notes: [Note], todos: [TodoItem]) {
+        init(notebooks: [Notebook], notes: [Note], todos: [TodoItem], protocols: [LabProtocol]) {
             self.notebooks = notebooks
             self.notes = notes
             self.todos = todos
+            self.protocols = protocols
         }
 
         init(from decoder: Decoder) throws {
@@ -49,6 +52,7 @@ final class NoteStore: ObservableObject {
             notebooks = try container.decode([Notebook].self, forKey: .notebooks)
             notes = try container.decode([Note].self, forKey: .notes)
             todos = try container.decodeIfPresent([TodoItem].self, forKey: .todos) ?? []
+            protocols = try container.decodeIfPresent([LabProtocol].self, forKey: .protocols) ?? []
         }
     }
 
@@ -61,10 +65,11 @@ final class NoteStore: ObservableObject {
         self.notebooks = decoded.notebooks
         self.notes = decoded.notes
         self.todos = decoded.todos
+        self.protocols = decoded.protocols
     }
 
     func save() {
-        let payload = SavedData(notebooks: notebooks, notes: notes, todos: todos)
+        let payload = SavedData(notebooks: notebooks, notes: notes, todos: todos, protocols: protocols)
         guard let data = try? JSONEncoder().encode(payload) else { return }
         try? data.write(to: fileURL, options: .atomic)
     }

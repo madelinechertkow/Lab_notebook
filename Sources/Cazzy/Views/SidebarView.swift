@@ -4,6 +4,7 @@ import AppKit
 enum SidebarItem: Hashable {
     case all
     case notebook(UUID)
+    case protocols
 }
 
 func openCazzyPreferences() {
@@ -60,6 +61,22 @@ struct SidebarView: View {
                     }
                 }
                 .buttonStyle(.plain)
+
+                Label {
+                    HStack {
+                        Text("Protocols")
+                            .font(theme.bodyFont(13, weight: .medium))
+                            .foregroundStyle(theme.textPrimary)
+                        Spacer()
+                        Text("\(store.protocols.count)")
+                            .font(theme.bodyFont(11))
+                            .foregroundStyle(theme.textSecondary)
+                    }
+                } icon: {
+                    Image(systemName: "list.clipboard.fill")
+                        .foregroundStyle(theme.secondaryAccent)
+                }
+                .tag(SidebarItem.protocols)
             }
 
             Section {
