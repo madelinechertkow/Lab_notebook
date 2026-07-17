@@ -11,6 +11,8 @@ struct EditorView: View {
     @State private var tags: [String] = []
     @State private var newTag: String = ""
     @State private var isPreview: Bool = false
+    @State private var executionLanguage: ExecutionLanguage?
+    @State private var codeBlockResults: [String: CodeBlockResult] = [:]
     @StateObject private var controller = EditorController()
 
     private var currentNote: Note? {
@@ -31,6 +33,21 @@ struct EditorView: View {
                     .onChange(of: title) { _ in persist() }
 
                 Spacer()
+
+                Menu {
+                    Button("No code execution") { executionLanguage = nil; persist() }
+                    Divider()
+                    ForEach(ExecutionLanguage.allCases) { language in
+                        Button(language.displayName) { executionLanguage = language; persist() }
+                    }
+                } label: {
+                    Label(executionLanguage?.displayName ?? "No code execution", systemImage: executionLanguage?.symbol ?? "chevron.left.forwardslash.chevron.right")
+                        .font(theme.bodyFont(11, weight: .medium))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .foregroundStyle(theme.textSecondary)
+                .padding(.top, 8)
 
                 Button {
                     isPreview.toggle()
@@ -58,7 +75,15 @@ struct EditorView: View {
             Divider().overlay(theme.divider).padding(.top, 10)
 
             if isPreview {
-                MarkdownPreview(markdown: content)
+                MarkdownPreview(
+                    markdown: content,
+                    executionLanguage: executionLanguage,
+                    codeBlockResults: codeBlockResults,
+                    onResult: { result in
+                        codeBlockResults[result.id] = result
+                        persist()
+                    }
+                )
             } else {
                 FormattingTextEditor(
                     text: $content,
@@ -96,6 +121,8 @@ struct EditorView: View {
         title = currentNote.title
         content = currentNote.content
         tags = currentNote.tags
+        executionLanguage = currentNote.executionLanguage
+        codeBlockResults = currentNote.codeBlockResults
     }
 
     private func persist() {
@@ -103,6 +130,8 @@ struct EditorView: View {
         updated.title = title
         updated.content = content
         updated.tags = tags
+        updated.executionLanguage = executionLanguage
+        updated.codeBlockResults = codeBlockResults
         store.updateNote(updated)
     }
 
@@ -191,6 +220,10 @@ struct FormattingToolbar: View {
             toolButton("bold", "Bold") { controller.wrapSelection(prefix: "**") }
             toolButton("italic", "Italic") { controller.wrapSelection(prefix: "*") }
             toolButton("chevron.left.slash.chevron.right", "Code") { controller.wrapSelection(prefix: "`") }
+            toolButton("play.rectangle", "Insert code block") {
+                let block = ExecBlockParser.template()
+                controller.insertBlock(block.text, cursorOffset: block.cursorOffset)
+            }
             Divider().frame(height: 14)
             toolButton("textformat.size.larger", "Heading") { controller.prefixCurrentLines(with: "## ") }
             toolButton("list.bullet", "Bullet list") { controller.prefixCurrentLines(with: "- ") }

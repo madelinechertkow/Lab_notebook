@@ -23,6 +23,21 @@ final class EditorController: ObservableObject {
         textView.didChangeText()
     }
 
+    /// Inserts a multi-line block (e.g. a code-fence template) at the cursor, placing the
+    /// cursor inside it rather than selecting/wrapping existing text.
+    func insertBlock(_ text: String, cursorOffset: Int) {
+        guard let textView, let storage = textView.textStorage else { return }
+        let range = textView.selectedRange()
+        let nsString = storage.string as NSString
+        let newline: unichar = 10
+        let needsLeadingNewline = range.location > 0 && nsString.character(at: range.location - 1) != newline
+        let insertion = (needsLeadingNewline ? "\n" : "") + text + "\n"
+        textView.insertText(insertion, replacementRange: range)
+        let cursorLocation = range.location + (needsLeadingNewline ? 1 : 0) + cursorOffset
+        textView.setSelectedRange(NSRange(location: cursorLocation, length: 0))
+        textView.didChangeText()
+    }
+
     func prefixCurrentLines(with prefix: String) {
         guard let textView, let storage = textView.textStorage else { return }
         let nsString = storage.string as NSString
