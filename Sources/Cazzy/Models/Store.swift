@@ -7,6 +7,9 @@ final class NoteStore: ObservableObject {
     @Published var todos: [TodoItem] = []
     @Published var protocols: [LabProtocol] = []
     @Published var scheduledExperiments: [ScheduledExperiment] = []
+    @Published var plateMapTemplates: [PlateMapTemplate] = []
+    @Published var gelLadderPresets: [GelLadderPreset] = []
+    @Published var codeEnvironments: [CodeEnvironment] = []
     @Published var labModeFilter: LabModeFilter = .all
     /// App-level preference: automatically mirror scheduled experiments to Apple Calendar.
     @Published var syncToAppleCalendar: Bool = false
@@ -66,17 +69,23 @@ final class NoteStore: ObservableObject {
         var todos: [TodoItem]
         var protocols: [LabProtocol]
         var scheduledExperiments: [ScheduledExperiment]
+        var plateMapTemplates: [PlateMapTemplate]
+        var gelLadderPresets: [GelLadderPreset]
+        var codeEnvironments: [CodeEnvironment]
 
         enum CodingKeys: String, CodingKey {
-            case notebooks, notes, todos, protocols, scheduledExperiments
+            case notebooks, notes, todos, protocols, scheduledExperiments, plateMapTemplates, gelLadderPresets, codeEnvironments
         }
 
-        init(notebooks: [Notebook], notes: [Note], todos: [TodoItem], protocols: [LabProtocol], scheduledExperiments: [ScheduledExperiment]) {
+        init(notebooks: [Notebook], notes: [Note], todos: [TodoItem], protocols: [LabProtocol], scheduledExperiments: [ScheduledExperiment], plateMapTemplates: [PlateMapTemplate], gelLadderPresets: [GelLadderPreset], codeEnvironments: [CodeEnvironment]) {
             self.notebooks = notebooks
             self.notes = notes
             self.todos = todos
             self.protocols = protocols
             self.scheduledExperiments = scheduledExperiments
+            self.plateMapTemplates = plateMapTemplates
+            self.gelLadderPresets = gelLadderPresets
+            self.codeEnvironments = codeEnvironments
         }
 
         init(from decoder: Decoder) throws {
@@ -86,6 +95,9 @@ final class NoteStore: ObservableObject {
             todos = try container.decodeIfPresent([TodoItem].self, forKey: .todos) ?? []
             protocols = try container.decodeIfPresent([LabProtocol].self, forKey: .protocols) ?? []
             scheduledExperiments = try container.decodeIfPresent([ScheduledExperiment].self, forKey: .scheduledExperiments) ?? []
+            plateMapTemplates = try container.decodeIfPresent([PlateMapTemplate].self, forKey: .plateMapTemplates) ?? []
+            gelLadderPresets = try container.decodeIfPresent([GelLadderPreset].self, forKey: .gelLadderPresets) ?? []
+            codeEnvironments = try container.decodeIfPresent([CodeEnvironment].self, forKey: .codeEnvironments) ?? []
         }
     }
 
@@ -100,6 +112,9 @@ final class NoteStore: ObservableObject {
         self.todos = decoded.todos
         self.protocols = decoded.protocols
         self.scheduledExperiments = decoded.scheduledExperiments
+        self.plateMapTemplates = decoded.plateMapTemplates
+        self.gelLadderPresets = decoded.gelLadderPresets
+        self.codeEnvironments = decoded.codeEnvironments
         self.lastSavedState = decoded
     }
 
@@ -110,7 +125,7 @@ final class NoteStore: ObservableObject {
     }
 
     private func currentState() -> SavedData {
-        SavedData(notebooks: notebooks, notes: notes, todos: todos, protocols: protocols, scheduledExperiments: scheduledExperiments)
+        SavedData(notebooks: notebooks, notes: notes, todos: todos, protocols: protocols, scheduledExperiments: scheduledExperiments, plateMapTemplates: plateMapTemplates, gelLadderPresets: gelLadderPresets, codeEnvironments: codeEnvironments)
     }
 
     private func persist(_ state: SavedData) {
@@ -152,6 +167,9 @@ final class NoteStore: ObservableObject {
         todos = state.todos
         protocols = state.protocols
         scheduledExperiments = state.scheduledExperiments
+        plateMapTemplates = state.plateMapTemplates
+        gelLadderPresets = state.gelLadderPresets
+        codeEnvironments = state.codeEnvironments
         // Break the coalescing window so the next edit gets its own undo step.
         lastUndoPushAt = nil
         persist(state)

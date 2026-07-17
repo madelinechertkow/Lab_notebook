@@ -5,6 +5,8 @@ enum SidebarItem: Hashable {
     case all
     case notebook(UUID)
     case protocols
+    case plateMaps
+    case gelMaps
 }
 
 struct SidebarView: View {
@@ -99,6 +101,38 @@ struct SidebarView: View {
                         .foregroundStyle(theme.secondaryAccent)
                 }
                 .tag(SidebarItem.protocols)
+
+                Label {
+                    HStack {
+                        Text("Plate Maps")
+                            .font(theme.bodyFont(13, weight: .medium))
+                            .foregroundStyle(theme.textPrimary)
+                        Spacer()
+                        Text("\(store.plateMapTemplates.count)")
+                            .font(theme.bodyFont(11))
+                            .foregroundStyle(theme.textSecondary)
+                    }
+                } icon: {
+                    Image(systemName: "square.grid.3x3.fill")
+                        .foregroundStyle(theme.tertiaryAccent)
+                }
+                .tag(SidebarItem.plateMaps)
+
+                Label {
+                    HStack {
+                        Text("Gel Ladders")
+                            .font(theme.bodyFont(13, weight: .medium))
+                            .foregroundStyle(theme.textPrimary)
+                        Spacer()
+                        Text("\(store.gelLadderPresets.count)")
+                            .font(theme.bodyFont(11))
+                            .foregroundStyle(theme.textSecondary)
+                    }
+                } icon: {
+                    Image(systemName: "chart.bar.doc.horizontal.fill")
+                        .foregroundStyle(theme.accent)
+                }
+                .tag(SidebarItem.gelMaps)
             }
 
             Section {

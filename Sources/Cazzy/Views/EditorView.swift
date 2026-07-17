@@ -1,9 +1,11 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct EditorView: View {
     @EnvironmentObject var store: NoteStore
     @EnvironmentObject var theme: ThemeStore
+    @EnvironmentObject var shortcuts: ShortcutStore
     let noteID: UUID
 
     @State private var title: String = ""
@@ -12,11 +14,37 @@ struct EditorView: View {
     @State private var newTag: String = ""
     @State private var isPreview: Bool = false
     @State private var executionLanguage: ExecutionLanguage?
+    @State private var codeEnvironmentID: UUID?
+    @State private var showingEnvironmentManager = false
     @State private var codeBlockResults: [String: CodeBlockResult] = [:]
+    @State private var plateMapResults: [String: PlateMapInstance] = [:]
+    @State private var gelMapResults: [String: GelMapInstance] = [:]
+    @State private var showingGelImagePicker = false
     @StateObject private var controller = EditorController()
 
     private var currentNote: Note? {
         store.notes.first(where: { $0.id == noteID })
+    }
+
+    private var currentNotebook: Notebook? {
+        guard let currentNote else { return nil }
+        return store.notebooks.first(where: { $0.id == currentNote.notebookID })
+    }
+
+    /// Script execution is a dry-lab-only capability — wet-lab (and uncategorized) notebooks
+    /// don't get code blocks at all.
+    private var allowsScripts: Bool {
+        currentNotebook?.labMode == .dry
+    }
+
+    /// Plate maps and gel maps are wet-lab benchwork tools — dry-lab notebooks don't get them.
+    private var allowsPlateGelMaps: Bool {
+        currentNotebook?.labMode != .dry
+    }
+
+    private var selectedCodeEnvironment: CodeEnvironment? {
+        guard let codeEnvironmentID else { return nil }
+        return store.codeEnvironments.first(where: { $0.id == codeEnvironmentID })
     }
 
     private var wordCount: Int {
@@ -34,20 +62,41 @@ struct EditorView: View {
 
                 Spacer()
 
-                Menu {
-                    Button("No code execution") { executionLanguage = nil; persist() }
-                    Divider()
-                    ForEach(ExecutionLanguage.allCases) { language in
-                        Button(language.displayName) { executionLanguage = language; persist() }
+                if allowsScripts {
+                    Menu {
+                        Button("No code execution") { executionLanguage = nil; persist() }
+                        Divider()
+                        ForEach(ExecutionLanguage.allCases) { language in
+                            Button(language.displayName) { executionLanguage = language; persist() }
+                        }
+                    } label: {
+                        Label(executionLanguage?.displayName ?? "No code execution", systemImage: executionLanguage?.symbol ?? "chevron.left.forwardslash.chevron.right")
+                            .font(theme.bodyFont(11, weight: .medium))
                     }
-                } label: {
-                    Label(executionLanguage?.displayName ?? "No code execution", systemImage: executionLanguage?.symbol ?? "chevron.left.forwardslash.chevron.right")
-                        .font(theme.bodyFont(11, weight: .medium))
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .foregroundStyle(theme.textSecondary)
+                    .padding(.top, 8)
+
+                    Menu {
+                        Button("No environment") { codeEnvironmentID = nil; persist() }
+                        if !store.codeEnvironments.isEmpty {
+                            Divider()
+                            ForEach(store.codeEnvironments) { environment in
+                                Button(environment.name) { codeEnvironmentID = environment.id; persist() }
+                            }
+                        }
+                        Divider()
+                        Button("Manage Environments…") { showingEnvironmentManager = true }
+                    } label: {
+                        Label(selectedCodeEnvironment?.name ?? "No environment", systemImage: "terminal")
+                            .font(theme.bodyFont(11, weight: .medium))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .foregroundStyle(theme.textSecondary)
+                    .padding(.top, 8)
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .foregroundStyle(theme.textSecondary)
-                .padding(.top, 8)
 
                 Button {
                     isPreview.toggle()
@@ -67,9 +116,16 @@ struct EditorView: View {
                 .padding(.top, 8)
 
             if !isPreview {
-                FormattingToolbar(controller: controller)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 12)
+                FormattingToolbar(
+                    controller: controller,
+                    allowsScripts: allowsScripts,
+                    allowsPlateGelMaps: allowsPlateGelMaps,
+                    plateMapTemplates: store.plateMapTemplates,
+                    onInsertPlateMap: insertPlateMap,
+                    onInsertGelMap: { showingGelImagePicker = true }
+                )
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
             }
 
             Divider().overlay(theme.divider).padding(.top, 10)
@@ -78,9 +134,24 @@ struct EditorView: View {
                 MarkdownPreview(
                     markdown: content,
                     executionLanguage: executionLanguage,
+                    codeEnvironment: selectedCodeEnvironment,
                     codeBlockResults: codeBlockResults,
                     onResult: { result in
                         codeBlockResults[result.id] = result
+                        persist()
+                    },
+                    onCodeChange: { blockID, newCode in
+                        content = ExecBlockParser.replacingExecCode(in: content, blockID: blockID, newCode: newCode)
+                        persist()
+                    },
+                    plateMapResults: plateMapResults,
+                    onPlateMapChange: { id, instance in
+                        plateMapResults[id] = instance
+                        persist()
+                    },
+                    gelMapResults: gelMapResults,
+                    onGelMapChange: { id, instance in
+                        gelMapResults[id] = instance
                         persist()
                     }
                 )
@@ -90,7 +161,8 @@ struct EditorView: View {
                     controller: controller,
                     font: nsFont(for: theme.theme.bodyFont, size: 14),
                     textColor: NSColor(theme.textPrimary),
-                    accentColor: NSColor(theme.accentDeep)
+                    accentColor: NSColor(theme.accentDeep),
+                    shortcuts: shortcuts.shortcuts
                 )
                 .padding(.horizontal, 16)
                 .onChange(of: content) { _ in persist() }
@@ -114,6 +186,14 @@ struct EditorView: View {
         .onAppear(perform: loadFromNote)
         .onChange(of: noteID) { _ in loadFromNote() }
         .onChange(of: store.undoTick) { _ in loadFromNote() }
+        .fileImporter(isPresented: $showingGelImagePicker, allowedContentTypes: [.image]) { result in
+            if case .success(let url) = result {
+                insertGelMap(from: url)
+            }
+        }
+        .sheet(isPresented: $showingEnvironmentManager) {
+            CodeEnvironmentManagerView()
+        }
     }
 
     private func loadFromNote() {
@@ -122,7 +202,10 @@ struct EditorView: View {
         content = currentNote.content
         tags = currentNote.tags
         executionLanguage = currentNote.executionLanguage
+        codeEnvironmentID = currentNote.codeEnvironmentID
         codeBlockResults = currentNote.codeBlockResults
+        plateMapResults = currentNote.plateMapResults
+        gelMapResults = currentNote.gelMapResults
     }
 
     private func persist() {
@@ -131,8 +214,41 @@ struct EditorView: View {
         updated.content = content
         updated.tags = tags
         updated.executionLanguage = executionLanguage
+        updated.codeEnvironmentID = codeEnvironmentID
         updated.codeBlockResults = codeBlockResults
+        updated.plateMapResults = plateMapResults
+        updated.gelMapResults = gelMapResults
         store.updateNote(updated)
+    }
+
+    /// Inserts a new ```platemap block at the cursor and seeds its note-local instance data —
+    /// a copy of the template's layout (or a blank plate of the given size), never a live
+    /// reference back to the template.
+    private func insertPlateMap(template: PlateMapTemplate?, size: PlateSize) {
+        let id = ExecBlockParser.newBlockID()
+        let block = ExecBlockParser.plateMapTemplate(id: id)
+        controller.insertBlock(block.text, cursorOffset: block.cursorOffset)
+        plateMapResults[id] = PlateMapInstance(
+            size: template?.size ?? size,
+            wells: template?.wells ?? [:],
+            sourceTemplateName: template?.name
+        )
+        persist()
+    }
+
+    /// Inserts a new ```gelmap block at the cursor and copies the chosen photo into
+    /// Application Support/Cazzy/GelImages, seeding the note-local instance with just that
+    /// filename — no ladder/lane labels yet, the user adds those from the block's own toolbar.
+    private func insertGelMap(from url: URL) {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        guard let filename = try? GelImageStore.importImage(from: url) else { return }
+
+        let id = ExecBlockParser.newBlockID()
+        let block = ExecBlockParser.gelMapTemplate(id: id)
+        controller.insertBlock(block.text, cursorOffset: block.cursorOffset)
+        gelMapResults[id] = GelMapInstance(imageFileName: filename)
+        persist()
     }
 
     private func nsFont(for choice: FontChoice, size: CGFloat) -> NSFont {
@@ -214,22 +330,57 @@ struct TagRow: View {
 struct FormattingToolbar: View {
     @EnvironmentObject var theme: ThemeStore
     @ObservedObject var controller: EditorController
+    var allowsScripts: Bool = true
+    var allowsPlateGelMaps: Bool = true
+    var plateMapTemplates: [PlateMapTemplate] = []
+    var onInsertPlateMap: (PlateMapTemplate?, PlateSize) -> Void = { _, _ in }
+    var onInsertGelMap: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 8) {
             toolButton("bold", "Bold") { controller.wrapSelection(prefix: "**") }
             toolButton("italic", "Italic") { controller.wrapSelection(prefix: "*") }
             toolButton("chevron.left.slash.chevron.right", "Code") { controller.wrapSelection(prefix: "`") }
-            toolButton("play.rectangle", "Insert code block") {
-                let block = ExecBlockParser.template()
-                controller.insertBlock(block.text, cursorOffset: block.cursorOffset)
+            if allowsScripts {
+                toolButton("play.rectangle", "Insert code block") {
+                    let block = ExecBlockParser.template()
+                    controller.insertBlock(block.text, cursorOffset: block.cursorOffset)
+                }
             }
             Divider().frame(height: 14)
             toolButton("textformat.size.larger", "Heading") { controller.prefixCurrentLines(with: "## ") }
             toolButton("list.bullet", "Bullet list") { controller.prefixCurrentLines(with: "- ") }
             toolButton("checklist", "Checklist") { controller.prefixCurrentLines(with: "- [ ] ") }
+            if allowsPlateGelMaps {
+                Divider().frame(height: 14)
+                plateMapMenu
+                toolButton("chart.bar.doc.horizontal", "Insert gel map") { onInsertGelMap() }
+            }
             Spacer()
         }
+    }
+
+    private var plateMapMenu: some View {
+        Menu {
+            ForEach(PlateSize.allCases) { size in
+                Button("Blank \(size.label)") { onInsertPlateMap(nil, size) }
+            }
+            if !plateMapTemplates.isEmpty {
+                Divider()
+                ForEach(plateMapTemplates) { template in
+                    Button("\(template.name) (\(template.size.label))") { onInsertPlateMap(template, template.size) }
+                }
+            }
+        } label: {
+            Image(systemName: "square.grid.3x3")
+                .font(.system(size: 12))
+                .frame(width: 26, height: 22)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .foregroundStyle(theme.textPrimary)
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.white.opacity(0.5)))
+        .help("Insert plate map")
     }
 
     private func toolButton(_ symbol: String, _ help: String, action: @escaping () -> Void) -> some View {

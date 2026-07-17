@@ -115,11 +115,20 @@ struct Note: Identifiable, Codable, Equatable {
     var updatedAt: Date = Date()
     /// nil means this note has no executable code blocks.
     var executionLanguage: ExecutionLanguage? = nil
+    /// References a `CodeEnvironment` in the library (not a copy) — renaming/fixing an
+    /// environment's activation command should apply to every note using it. nil means run
+    /// under the default login shell with no activation step.
+    var codeEnvironmentID: UUID? = nil
     /// Keyed by block ID (see `ExecBlockParser`).
     var codeBlockResults: [String: CodeBlockResult] = [:]
+    /// Keyed by block ID — each is a self-contained copy, not a live reference to a
+    /// `PlateMapTemplate`, so editing it here never changes the library template.
+    var plateMapResults: [String: PlateMapInstance] = [:]
+    /// Keyed by block ID.
+    var gelMapResults: [String: GelMapInstance] = [:]
 
     enum CodingKeys: String, CodingKey {
-        case id, notebookID, title, content, tags, createdAt, updatedAt, executionLanguage, codeBlockResults
+        case id, notebookID, title, content, tags, createdAt, updatedAt, executionLanguage, codeEnvironmentID, codeBlockResults, plateMapResults, gelMapResults
     }
 
     init(
@@ -131,7 +140,10 @@ struct Note: Identifiable, Codable, Equatable {
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         executionLanguage: ExecutionLanguage? = nil,
-        codeBlockResults: [String: CodeBlockResult] = [:]
+        codeEnvironmentID: UUID? = nil,
+        codeBlockResults: [String: CodeBlockResult] = [:],
+        plateMapResults: [String: PlateMapInstance] = [:],
+        gelMapResults: [String: GelMapInstance] = [:]
     ) {
         self.id = id
         self.notebookID = notebookID
@@ -141,7 +153,10 @@ struct Note: Identifiable, Codable, Equatable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.executionLanguage = executionLanguage
+        self.codeEnvironmentID = codeEnvironmentID
         self.codeBlockResults = codeBlockResults
+        self.plateMapResults = plateMapResults
+        self.gelMapResults = gelMapResults
     }
 
     init(from decoder: Decoder) throws {
@@ -154,7 +169,10 @@ struct Note: Identifiable, Codable, Equatable {
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
         executionLanguage = try container.decodeIfPresent(ExecutionLanguage.self, forKey: .executionLanguage)
+        codeEnvironmentID = try container.decodeIfPresent(UUID.self, forKey: .codeEnvironmentID)
         codeBlockResults = try container.decodeIfPresent([String: CodeBlockResult].self, forKey: .codeBlockResults) ?? [:]
+        plateMapResults = try container.decodeIfPresent([String: PlateMapInstance].self, forKey: .plateMapResults) ?? [:]
+        gelMapResults = try container.decodeIfPresent([String: GelMapInstance].self, forKey: .gelMapResults) ?? [:]
     }
 
     var preview: String {

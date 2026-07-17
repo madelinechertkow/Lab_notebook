@@ -7,15 +7,37 @@ struct ExecBlockView: View {
     let blockID: String
     let code: String
     let language: ExecutionLanguage?
+    var activationCommand: String? = nil
     let result: CodeBlockResult?
     let onResult: (CodeBlockResult) -> Void
+    var onCodeChange: (String) -> Void = { _ in }
 
     @StateObject private var runner = CodeRunner()
     @State private var environmentExpanded = false
+    @State private var editedCode: String
+
+    init(
+        blockID: String,
+        code: String,
+        language: ExecutionLanguage?,
+        activationCommand: String? = nil,
+        result: CodeBlockResult?,
+        onResult: @escaping (CodeBlockResult) -> Void,
+        onCodeChange: @escaping (String) -> Void = { _ in }
+    ) {
+        self.blockID = blockID
+        self.code = code
+        self.language = language
+        self.activationCommand = activationCommand
+        self.result = result
+        self.onResult = onResult
+        self.onCodeChange = onCodeChange
+        self._editedCode = State(initialValue: code)
+    }
 
     private var isStale: Bool {
         guard let result else { return false }
-        return result.codeSnapshot != code
+        return result.codeSnapshot != editedCode
     }
 
     private var exitSucceeded: Bool {
@@ -25,12 +47,16 @@ struct ExecBlockView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Text(code.isEmpty ? " " : code)
+            TextEditor(text: $editedCode)
                 .font(.system(size: 13, design: .monospaced))
                 .foregroundStyle(theme.textPrimary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
+                .frame(minHeight: 60)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
+                .onChange(of: editedCode) { onCodeChange($0) }
+                .onChange(of: code) { if $0 != editedCode { editedCode = $0 } }
 
             if let result {
                 Divider().overlay(theme.divider)
@@ -163,13 +189,14 @@ struct ExecBlockView: View {
 
     private func runBlock(language: ExecutionLanguage) {
         let startedAt = Date()
+        let runCode = editedCode
         Task {
-            async let executionResult = runner.run(language: language, code: code)
-            async let environment = CodeExecutor.captureEnvironment(language: language)
+            async let executionResult = runner.run(language: language, code: runCode, activationCommand: activationCommand)
+            async let environment = CodeExecutor.captureEnvironment(language: language, activationCommand: activationCommand)
             let (execOutcome, env) = await (executionResult, environment)
             let result = CodeBlockResult(
                 id: blockID,
-                codeSnapshot: code,
+                codeSnapshot: runCode,
                 stdout: execOutcome.stdout,
                 stderr: execOutcome.stderr,
                 exitCode: execOutcome.exitCode,

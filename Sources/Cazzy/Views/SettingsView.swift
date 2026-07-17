@@ -1,8 +1,48 @@
 import SwiftUI
+import AppKit
+
+/// A horizontal `ScrollView` replacement that forces the thin, auto-hiding "overlay" scroller
+/// style on its `NSScrollView` — plain SwiftUI `ScrollView` has no way to opt out of the
+/// chunky "legacy" scroller some users have set in System Settings, since that's controlled
+/// per-`NSScrollView` instance, not by a SwiftUI modifier.
+private struct ThinHorizontalScroll<Content: View>: NSViewRepresentable {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let hostingView = NSHostingView(rootView: content)
+        hostingView.translatesAutoresizingMaskIntoConstraints = false
+
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.hasHorizontalScroller = true
+        scrollView.hasVerticalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+        scrollView.documentView = hostingView
+
+        NSLayoutConstraint.activate([
+            hostingView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+            hostingView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
+            hostingView.heightAnchor.constraint(equalTo: scrollView.contentView.heightAnchor)
+        ])
+        return scrollView
+    }
+
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        guard let hostingView = nsView.documentView as? NSHostingView<Content> else { return }
+        hostingView.rootView = content
+    }
+}
 
 struct SettingsView: View {
     @EnvironmentObject var store: NoteStore
     @EnvironmentObject var theme: ThemeStore
+    @EnvironmentObject var shortcuts: ShortcutStore
+    @State private var showingShortcutManager = false
 
     var body: some View {
         Form {
@@ -17,7 +57,7 @@ struct SettingsView: View {
             }
 
             Section("Presets") {
-                ScrollView(.horizontal, showsIndicators: false) {
+                ThinHorizontalScroll {
                     HStack(spacing: 16) {
                         ForEach(AppTheme.presets, id: \.name) { preset in
                             PresetSwatch(preset: preset, isSelected: theme.theme.name == preset.name) {
@@ -25,9 +65,11 @@ struct SettingsView: View {
                             }
                         }
                     }
-                    .padding(.vertical, 8)
+                    .padding(.top, 8)
+                    .padding(.bottom, 18)
                     .padding(.horizontal, 2)
                 }
+                .frame(height: 94)
             }
 
             Section("Colors") {
@@ -36,6 +78,15 @@ struct SettingsView: View {
                 ColorPicker("Background", selection: binding(\.backgroundHex))
                 ColorPicker("Sidebar", selection: binding(\.sidebarHex))
                 ColorPicker("Text", selection: binding(\.textPrimaryHex))
+            }
+
+            Section("Special Characters") {
+                Button("Edit Special Character Shortcuts…") {
+                    showingShortcutManager = true
+                }
+                Text("Customize which keystrokes insert symbols like µ, °, ∂, or Ω while writing notes. Defaults match the standard macOS Option-key combinations.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
 
             Section("Fonts") {
@@ -66,6 +117,9 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 440, height: 620)
+        .sheet(isPresented: $showingShortcutManager) {
+            ShortcutManagerView()
+        }
     }
 
     private func binding(_ keyPath: WritableKeyPath<AppTheme, UInt32>) -> Binding<Color> {

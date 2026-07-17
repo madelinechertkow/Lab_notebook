@@ -15,6 +15,7 @@ struct CazzyApp: App {
     @NSApplicationDelegateAdaptor(CazzyAppDelegate.self) private var appDelegate
     @StateObject private var store = NoteStore()
     @StateObject private var themeStore = ThemeStore()
+    @StateObject private var shortcutStore = ShortcutStore()
     @StateObject private var appleCalendar = AppleCalendarService()
 
     var body: some Scene {
@@ -23,6 +24,7 @@ struct CazzyApp: App {
             ContentView()
                 .environmentObject(store)
                 .environmentObject(themeStore)
+                .environmentObject(shortcutStore)
                 .frame(minWidth: 900, minHeight: 600)
         }
         .windowStyle(.titleBar)
@@ -61,6 +63,7 @@ struct CazzyApp: App {
             SettingsView()
                 .environmentObject(store)
                 .environmentObject(themeStore)
+                .environmentObject(shortcutStore)
         }
     }
 }

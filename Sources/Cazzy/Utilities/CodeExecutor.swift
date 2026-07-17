@@ -50,6 +50,7 @@ enum CodeExecutor {
     static func run(
         language: ExecutionLanguage,
         code: String,
+        activationCommand: String? = nil,
         onLaunch: @escaping (Process) -> Void
     ) async -> (stdout: String, stderr: String, exitCode: Int32, duration: Double) {
         let scriptURL = FileManager.default.temporaryDirectory
@@ -63,14 +64,14 @@ enum CodeExecutor {
         }
         defer { try? FileManager.default.removeItem(at: scriptURL) }
 
-        let command = "\(language.interpreterCommand) \(shellQuote(scriptURL.path))"
+        let command = withActivation(activationCommand, "\(language.interpreterCommand) \(shellQuote(scriptURL.path))")
         return await runLoginShell(command, onLaunch: onLaunch, timeout: safetyTimeout)
     }
 
     /// Captures interpreter version + a best-effort installed-package list.
-    static func captureEnvironment(language: ExecutionLanguage) async -> EnvironmentSnapshot {
+    static func captureEnvironment(language: ExecutionLanguage, activationCommand: String? = nil) async -> EnvironmentSnapshot {
         let versionResult = await runLoginShell(
-            "\(language.interpreterCommand) --version",
+            withActivation(activationCommand, "\(language.interpreterCommand) --version"),
             onLaunch: { _ in },
             timeout: 15
         )
@@ -87,11 +88,20 @@ enum CodeExecutor {
 
         var packages = ""
         if let packageCommand {
-            let result = await runLoginShell(packageCommand, onLaunch: { _ in }, timeout: 20)
+            let result = await runLoginShell(withActivation(activationCommand, packageCommand), onLaunch: { _ in }, timeout: 20)
             packages = String(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines).prefix(4000))
         }
 
         return EnvironmentSnapshot(interpreterVersion: version, packageList: packages)
+    }
+
+    /// Prefixes a command with an environment-activation snippet (e.g. `conda activate ds`),
+    /// so scripts run inside a specific environment rather than whatever's active by default.
+    private static func withActivation(_ activationCommand: String?, _ command: String) -> String {
+        guard let activationCommand, !activationCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return command
+        }
+        return "\(activationCommand) && \(command)"
     }
 
     private static func shellQuote(_ path: String) -> String {
@@ -161,9 +171,9 @@ final class CodeRunner: ObservableObject {
     @Published private(set) var isRunning = false
     private weak var activeProcess: Process?
 
-    func run(language: ExecutionLanguage, code: String) async -> (stdout: String, stderr: String, exitCode: Int32, duration: Double) {
+    func run(language: ExecutionLanguage, code: String, activationCommand: String? = nil) async -> (stdout: String, stderr: String, exitCode: Int32, duration: Double) {
         isRunning = true
-        let result = await CodeExecutor.run(language: language, code: code) { [weak self] process in
+        let result = await CodeExecutor.run(language: language, code: code, activationCommand: activationCommand) { [weak self] process in
             Task { @MainActor in self?.activeProcess = process }
         }
         activeProcess = nil

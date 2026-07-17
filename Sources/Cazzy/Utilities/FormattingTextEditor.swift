@@ -63,15 +63,32 @@ final class EditorController: ObservableObject {
     }
 }
 
+/// An `NSTextView` that lets user-defined `SpecialCharacterShortcut`s override AppKit's
+/// default key-equivalent handling, so a custom keystroke can insert arbitrary text instead
+/// of whatever the OS/keyboard layout would normally produce.
+final class ShortcutAwareTextView: NSTextView {
+    var shortcuts: [SpecialCharacterShortcut] = []
+
+    override func keyDown(with event: NSEvent) {
+        if let match = shortcuts.first(where: { $0.matches(event) }) {
+            insertText(match.insertText, replacementRange: selectedRange())
+            return
+        }
+        super.keyDown(with: event)
+    }
+}
+
 struct FormattingTextEditor: NSViewRepresentable {
     @Binding var text: String
     var controller: EditorController
     var font: NSFont = .systemFont(ofSize: 14)
     var textColor: NSColor = .labelColor
     var accentColor: NSColor = .controlAccentColor
+    var shortcuts: [SpecialCharacterShortcut] = []
 
     func makeNSView(context: Context) -> NSScrollView {
-        let textView = NSTextView()
+        let textView = ShortcutAwareTextView()
+        textView.shortcuts = shortcuts
         textView.delegate = context.coordinator
         textView.string = text
         textView.font = font
@@ -107,6 +124,7 @@ struct FormattingTextEditor: NSViewRepresentable {
         textView.font = font
         textView.textColor = textColor
         textView.insertionPointColor = accentColor
+        (textView as? ShortcutAwareTextView)?.shortcuts = shortcuts
         controller.textView = textView
     }
 

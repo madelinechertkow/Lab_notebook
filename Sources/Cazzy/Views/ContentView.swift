@@ -6,6 +6,8 @@ struct ContentView: View {
     @State private var sidebarSelection: SidebarItem? = .all
     @State private var selectedNoteID: UUID?
     @State private var selectedProtocolID: UUID?
+    @State private var selectedPlateMapID: UUID?
+    @State private var selectedLadderID: UUID?
 
     var body: some View {
         NavigationSplitView {
@@ -15,6 +17,12 @@ struct ContentView: View {
             if sidebarSelection == .protocols {
                 ProtocolListView(selectedProtocolID: $selectedProtocolID)
                     .navigationSplitViewColumnWidth(min: 260, ideal: 300)
+            } else if sidebarSelection == .plateMaps {
+                PlateMapListView(selectedPlateMapID: $selectedPlateMapID)
+                    .navigationSplitViewColumnWidth(min: 260, ideal: 300)
+            } else if sidebarSelection == .gelMaps {
+                GelLadderListView(selectedLadderID: $selectedLadderID)
+                    .navigationSplitViewColumnWidth(min: 260, ideal: 300)
             } else {
                 NoteListView(sidebarSelection: sidebarSelection, selectedNoteID: $selectedNoteID)
                     .navigationSplitViewColumnWidth(min: 260, ideal: 300)
@@ -23,6 +31,18 @@ struct ContentView: View {
             if sidebarSelection == .protocols {
                 if let selectedProtocolID, store.protocols.contains(where: { $0.id == selectedProtocolID }) {
                     ProtocolEditorView(protocolID: selectedProtocolID)
+                } else {
+                    EmptyStateView()
+                }
+            } else if sidebarSelection == .plateMaps {
+                if let selectedPlateMapID, store.plateMapTemplates.contains(where: { $0.id == selectedPlateMapID }) {
+                    PlateMapEditorView(plateMapID: selectedPlateMapID)
+                } else {
+                    EmptyStateView()
+                }
+            } else if sidebarSelection == .gelMaps {
+                if let selectedLadderID, store.gelLadderPresets.contains(where: { $0.id == selectedLadderID }) {
+                    GelLadderEditorView(ladderID: selectedLadderID)
                 } else {
                     EmptyStateView()
                 }
@@ -36,6 +56,8 @@ struct ContentView: View {
         .onChange(of: sidebarSelection) { _ in
             selectedNoteID = nil
             selectedProtocolID = nil
+            selectedPlateMapID = nil
+            selectedLadderID = nil
         }
         .onChange(of: store.labModeFilter) { _ in
             if case .notebook(let id) = sidebarSelection,
