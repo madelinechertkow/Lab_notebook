@@ -15,8 +15,6 @@ struct SidebarView: View {
     @EnvironmentObject var theme: ThemeStore
     @Binding var selection: SidebarItem?
     @Environment(\.openWindow) private var openWindow
-    @State private var notebookPendingDeletion: Notebook?
-    @State private var notebookBlockedFromArchiving: Notebook?
     @State private var showingNewNotebookPopover = false
 
     var body: some View {
@@ -159,7 +157,7 @@ struct SidebarView: View {
                     .contextMenu {
                         Button {
                             if !store.archiveNotebook(notebook) {
-                                notebookBlockedFromArchiving = notebook
+                                presentBlockedArchiveAlert(for: notebook)
                             } else if selection == .notebook(notebook.id) {
                                 selection = .all
                             }
@@ -167,7 +165,7 @@ struct SidebarView: View {
                             Label("Archive Notebook", systemImage: "archivebox")
                         }
                         Button(role: .destructive) {
-                            notebookPendingDeletion = notebook
+                            presentDeleteConfirmation(for: notebook)
                         } label: {
                             Label("Delete Notebook…", systemImage: "trash")
                         }
@@ -221,7 +219,7 @@ struct SidebarView: View {
                                 Label("Unarchive", systemImage: "arrow.uturn.backward")
                             }
                             Button(role: .destructive) {
-                                notebookPendingDeletion = notebook
+                                presentDeleteConfirmation(for: notebook)
                             } label: {
                                 Label("Delete Permanently…", systemImage: "trash")
                             }
@@ -261,35 +259,6 @@ struct SidebarView: View {
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         .background(theme.sidebar)
-        .alert(item: $notebookPendingDeletion) { notebook in
-            guard store.notebooks.count > 1 else {
-                return Alert(
-                    title: Text("Can't Delete \"\(notebook.name)\""),
-                    message: Text("This is your only notebook — new notes need somewhere to go, so at least one has to stay."),
-                    dismissButton: .default(Text("OK"))
-                )
-            }
-            let noteCount = store.notes(in: notebook.id).count
-            return Alert(
-                title: Text("Delete \"\(notebook.name)\"?"),
-                message: Text(noteCount > 0
-                    ? "This will also delete \(noteCount) note\(noteCount == 1 ? "" : "s") inside it. You can undo this with ⌘Z."
-                    : "This notebook is empty. You can undo this with ⌘Z."),
-                primaryButton: .destructive(Text("Delete")) {
-                    let wasSelected = selection == .notebook(notebook.id)
-                    store.deleteNotebook(notebook)
-                    if wasSelected { selection = .all }
-                },
-                secondaryButton: .cancel()
-            )
-        }
-        .alert(item: $notebookBlockedFromArchiving) { notebook in
-            Alert(
-                title: Text("Can't Archive \"\(notebook.name)\""),
-                message: Text("This is your only active notebook — new notes need somewhere to go, so at least one has to stay unarchived."),
-                dismissButton: .default(Text("OK"))
-            )
-        }
         .safeAreaInset(edge: .top) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 6) {
@@ -317,6 +286,42 @@ struct SidebarView: View {
             .padding(.bottom, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    // NSAlert instead of SwiftUI's .alert(item:): a confirmation triggered from inside a
+    // .contextMenu action doesn't reliably present as a SwiftUI alert on macOS — the menu's
+    // own dismissal races with the alert's presentation and it silently never shows up.
+    // Driving it through AppKit directly sidesteps that.
+    private func presentDeleteConfirmation(for notebook: Notebook) {
+        let alert = NSAlert()
+        guard store.notebooks.count > 1 else {
+            alert.messageText = "Can't Delete \"\(notebook.name)\""
+            alert.informativeText = "This is your only notebook — new notes need somewhere to go, so at least one has to stay."
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            return
+        }
+        let noteCount = store.notes(in: notebook.id).count
+        alert.messageText = "Delete \"\(notebook.name)\"?"
+        alert.informativeText = noteCount > 0
+            ? "This will also delete \(noteCount) note\(noteCount == 1 ? "" : "s") inside it. You can undo this with ⌘Z."
+            : "This notebook is empty. You can undo this with ⌘Z."
+        alert.alertStyle = .warning
+        let deleteButton = alert.addButton(withTitle: "Delete")
+        deleteButton.hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let wasSelected = selection == .notebook(notebook.id)
+        store.deleteNotebook(notebook)
+        if wasSelected { selection = .all }
+    }
+
+    private func presentBlockedArchiveAlert(for notebook: Notebook) {
+        let alert = NSAlert()
+        alert.messageText = "Can't Archive \"\(notebook.name)\""
+        alert.informativeText = "This is your only active notebook — new notes need somewhere to go, so at least one has to stay unarchived."
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 }
 
