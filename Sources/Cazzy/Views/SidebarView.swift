@@ -294,9 +294,9 @@ struct SidebarView: View {
     // Driving it through AppKit directly sidesteps that.
     private func presentDeleteConfirmation(for notebook: Notebook) {
         let alert = NSAlert()
-        guard store.notebooks.count > 1 else {
+        guard store.canDeleteNotebook(notebook) else {
             alert.messageText = "Can't Delete \"\(notebook.name)\""
-            alert.informativeText = "This is your only notebook — new notes need somewhere to go, so at least one has to stay."
+            alert.informativeText = "This is your only active notebook — new notes need somewhere to go, so at least one has to stay."
             alert.addButton(withTitle: "OK")
             alert.runModal()
             return

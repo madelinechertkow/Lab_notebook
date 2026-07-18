@@ -86,14 +86,24 @@ final class NoteStore: ObservableObject {
         save()
     }
 
+    /// Whether deleting this notebook would leave at least one active (unarchived)
+    /// notebook for new notes to land in. Deleting an archived notebook never lowers
+    /// the active count; deleting an active one must leave another active behind.
+    /// Mirrors archiveNotebook(_:)'s "keep one unarchived" rule so the two can't drift.
+    func canDeleteNotebook(_ notebook: Notebook) -> Bool {
+        let activeCount = notebooks.filter { !$0.isArchived }.count
+        let remainingActive = activeCount - (notebook.isArchived ? 0 : 1)
+        return remainingActive >= 1
+    }
+
     /// Deletes a notebook and every note inside it (notes have no other home,
     /// so leaving them behind would just make them silently unreachable).
-    /// Refuses to delete the last remaining notebook, since note creation
-    /// always needs somewhere to land. Goes through save() like everything
+    /// Refuses to delete the last active notebook, since note creation always
+    /// needs somewhere unarchived to land. Goes through save() like everything
     /// else, so it's fully covered by app-wide undo if this was a mistake.
     @discardableResult
     func deleteNotebook(_ notebook: Notebook) -> Bool {
-        guard notebooks.count > 1 else { return false }
+        guard canDeleteNotebook(notebook) else { return false }
         notes.removeAll { $0.notebookID == notebook.id }
         notebooks.removeAll { $0.id == notebook.id }
         save()
