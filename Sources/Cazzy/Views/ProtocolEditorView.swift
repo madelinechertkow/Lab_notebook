@@ -43,6 +43,7 @@ struct ProtocolEditorView: View {
                 }
                 .padding(20)
             }
+            .scrollContentBackground(.hidden)
         }
         .background(theme.editorBackground)
         .onAppear(perform: loadFromProtocol)
@@ -139,7 +140,7 @@ struct ProtocolEditorView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(theme.textPrimary)
-        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.white.opacity(0.5)))
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(theme.cardBackground.opacity(0.5)))
     }
 
     private var saveVersionPopover: some View {

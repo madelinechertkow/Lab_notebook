@@ -7,6 +7,32 @@ struct Notebook: Identifiable, Codable, Equatable {
     var colorIndex: Int
     /// nil means the notebook is shared between wet and dry lab modes.
     var labMode: LabMode?
+    /// Archived notebooks are hidden from the main sidebar and "All Notes",
+    /// but their notes are untouched — unlike deleteNotebook, nothing is lost.
+    var isArchived: Bool = false
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, symbol, colorIndex, labMode, isArchived
+    }
+
+    init(id: UUID = UUID(), name: String, symbol: String, colorIndex: Int, labMode: LabMode?, isArchived: Bool = false) {
+        self.id = id
+        self.name = name
+        self.symbol = symbol
+        self.colorIndex = colorIndex
+        self.labMode = labMode
+        self.isArchived = isArchived
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        symbol = try container.decode(String.self, forKey: .symbol)
+        colorIndex = try container.decode(Int.self, forKey: .colorIndex)
+        labMode = try container.decodeIfPresent(LabMode.self, forKey: .labMode)
+        isArchived = try container.decodeIfPresent(Bool.self, forKey: .isArchived) ?? false
+    }
 
     static func defaults() -> [Notebook] {
         [

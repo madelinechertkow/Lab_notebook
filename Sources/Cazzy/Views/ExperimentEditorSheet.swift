@@ -74,7 +74,7 @@ struct ExperimentEditorSheet: View {
                     .scrollContentBackground(.hidden)
                     .frame(height: 48)
                     .padding(6)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.5)))
+                    .background(RoundedRectangle(cornerRadius: 8).fill(theme.cardBackground.opacity(0.5)))
             }
 
             if existing == nil {

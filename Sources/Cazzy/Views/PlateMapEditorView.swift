@@ -41,6 +41,7 @@ struct PlateMapEditorView: View {
             }
             .padding(24)
         }
+        .scrollContentBackground(.hidden)
         .background(theme.editorBackground)
         .onAppear(perform: loadFromTemplate)
         .onChange(of: plateMapID) { _ in loadFromTemplate() }

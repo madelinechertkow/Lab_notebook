@@ -16,6 +16,44 @@ extension Color {
         let b = UInt32((nsColor.blueComponent * 255).rounded())
         return (r << 16) | (g << 8) | b
     }
+
+    /// WCAG relative luminance. Themes are user-generated from arbitrary palettes, so an
+    /// accent color used as a chip/badge background can land anywhere from near-black to
+    /// pastel — a hardcoded white label text is illegible on the light end.
+    var relativeLuminance: Double {
+        let nsColor = NSColor(self).usingColorSpace(.deviceRGB) ?? NSColor.white
+        func linearize(_ c: CGFloat) -> Double {
+            let c = Double(c)
+            return c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        let r = linearize(nsColor.redComponent)
+        let g = linearize(nsColor.greenComponent)
+        let b = linearize(nsColor.blueComponent)
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    }
+
+    /// Black or white, whichever contrasts more strongly against this color used as a background.
+    var readableForeground: Color {
+        relativeLuminance > 0.179 ? .black : .white
+    }
+}
+
+/// Which variant of the active palette is shown. `.auto` follows the Mac's own system
+/// appearance (Light/Dark/Auto in System Settings → Appearance) rather than computing
+/// sunrise/sunset itself — no location permission needed, and it rides along with whatever
+/// time-based switching the user already has configured at the OS level.
+enum ThemeMode: String, CaseIterable, Identifiable, Codable {
+    case light, dark, auto
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .light: return "Light"
+        case .dark: return "Dark"
+        case .auto: return "Auto"
+        }
+    }
 }
 
 enum FontChoice: String, CaseIterable, Identifiable, Codable {
@@ -97,6 +135,26 @@ private func hsbComponents(_ hex: UInt32) -> (h: Double, s: Double, b: Double) {
     return (h, sat, maxV)
 }
 
+/// WCAG relative luminance from a hex color. Used (instead of HSB brightness) wherever a
+/// generated color needs a guaranteed minimum contrast against a background: HSB brightness
+/// rates a fully-saturated pure blue as "bright" (value 1.0) even though its actual luminance
+/// is near-zero, which let dark-mode accent colors slip through unreadably dim.
+private func relativeLuminance(_ hex: UInt32) -> Double {
+    let c = hexComponents(hex)
+    func linearize(_ v: Double) -> Double {
+        let v = v / 255
+        return v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+    }
+    return 0.2126 * linearize(c.r) + 0.7152 * linearize(c.g) + 0.0722 * linearize(c.b)
+}
+
+private struct PaletteSpec {
+    let name: String
+    let hexes: [UInt32]
+    let displayFont: FontChoice
+    let bodyFont: FontChoice
+}
+
 struct AppTheme: Codable, Equatable {
     var name: String
 
@@ -163,43 +221,126 @@ struct AppTheme: Codable, Equatable {
         )
     }
 
-    static let presets: [AppTheme] = [
-        generated(name: "Merlot & Moss", hexes: [0x6a0136, 0xbfab25, 0xb81365, 0x026c7c, 0x055864], displayFont: .serif, bodyFont: .defaultSystem),
-        generated(name: "Cosmic Candy", hexes: [0x1b065e, 0xff47da, 0xff87ab, 0xfcc8c2, 0xf5eccd], displayFont: .rounded, bodyFont: .rounded),
-        generated(name: "Neon Orchid", hexes: [0x2f2d2e, 0xdadff7, 0x792359, 0xd72483, 0xfd3e81], displayFont: .defaultSystem, bodyFont: .rounded),
-        generated(name: "Desert Slate", hexes: [0x628395, 0x96897b, 0xdbad6a, 0xcf995f, 0xd0ce7c], displayFont: .baskerville, bodyFont: .defaultSystem),
-        generated(name: "Carnival", hexes: [0x540d6e, 0xee4266, 0xffd23f, 0x3bceac, 0x0ead69], displayFont: .futura, bodyFont: .rounded),
-        generated(name: "Harvest Dusk", hexes: [0xe3b505, 0x95190c, 0x610345, 0x107e7d, 0x044b7f], displayFont: .palatino, bodyFont: .defaultSystem),
-        generated(name: "Antique Rose", hexes: [0xbfb48f, 0x564e58, 0x904e55, 0xf2efe9, 0x252627], displayFont: .georgia, bodyFont: .defaultSystem),
-        generated(name: "Regatta", hexes: [0x06aed5, 0x086788, 0xf0c808, 0xfff1d0, 0xdd1c1a], displayFont: .avenirNext, bodyFont: .defaultSystem),
-        generated(name: "Jewel Tone", hexes: [0xffbc42, 0xd81159, 0x8f2d56, 0x218380, 0x73d2de], displayFont: .serif, bodyFont: .rounded),
-        generated(name: "Mossy Mint", hexes: [0x1d1e18, 0x6b8f71, 0xaad2ba, 0xd9fff5, 0xb9f5d8], displayFont: .optima, bodyFont: .defaultSystem),
-        generated(name: "Twilight Blush", hexes: [0x190b28, 0x685762, 0x9b9987, 0xefa9ae, 0xe55381], displayFont: .serif, bodyFont: .rounded),
-        generated(name: "Coastal Linen", hexes: [0xebe9e9, 0xf3f8f2, 0x3581b8, 0xfcb07e, 0xdee2d6], displayFont: .defaultSystem, bodyFont: .defaultSystem),
-        generated(name: "Cotton Candy", hexes: [0xbaf2bb, 0xbaf2d8, 0xbad7f2, 0xf2bac9, 0xf2e2ba], displayFont: .rounded, bodyFont: .rounded),
-        generated(name: "Peach Blossom", hexes: [0xf2ccc3, 0xe78f8e, 0xffe6e8, 0xacd8aa, 0xf48498], displayFont: .serif, bodyFont: .rounded),
-        generated(name: "Velvet Ember", hexes: [0x22162b, 0x451f55, 0x724e91, 0xe54f6d, 0xf8c630], displayFont: .serif, bodyFont: .defaultSystem),
-        generated(name: "Marina Sunset", hexes: [0x8ecae6, 0x219ebc, 0x023047, 0xffb703, 0xfb8500], displayFont: .avenirNext, bodyFont: .defaultSystem),
-        generated(name: "Olive Grove", hexes: [0x606c38, 0x283618, 0xfefae0, 0xdda15e, 0xbc6c25], displayFont: .georgia, bodyFont: .defaultSystem),
-        generated(name: "Tidal Autumn", hexes: [0x264653, 0x2a9d8f, 0xe9c46a, 0xf4a261, 0xe76f51], displayFont: .futura, bodyFont: .rounded),
-        generated(name: "Smoked Amber", hexes: [0x04151f, 0x183a37, 0xefd6ac, 0xc44900, 0x432534], displayFont: .palatino, bodyFont: .defaultSystem),
-        generated(name: "Wine & Blush", hexes: [0x461220, 0x8c2f39, 0xb23a48, 0xfcb9b2, 0xfed0bb], displayFont: .serif, bodyFont: .rounded),
-        generated(name: "Dusty Sunset", hexes: [0xfaa275, 0xff8c61, 0xce6a85, 0x985277, 0x5c374c], displayFont: .rounded, bodyFont: .rounded),
-        generated(name: "Sage & Rust", hexes: [0xd4e09b, 0xf6f4d2, 0xcbdfbd, 0xf19c79, 0xa44a3f], displayFont: .optima, bodyFont: .defaultSystem),
-        generated(name: "Brick & Violet", hexes: [0xfff8f0, 0x9e2b25, 0x51355a, 0x2a0c4e, 0xf5f8de], displayFont: .defaultSystem, bodyFont: .defaultSystem),
-        generated(name: "Orchid Meadow", hexes: [0x805d93, 0xf49fbc, 0xffd3ba, 0x9ebd6e, 0x169873], displayFont: .rounded, bodyFont: .rounded),
-        generated(name: "Terracotta Mist", hexes: [0xde6b48, 0xe5b181, 0xf4b9b2, 0xdaedbd, 0x7dbbc3], displayFont: .georgia, bodyFont: .defaultSystem),
-        generated(name: "Deep Current", hexes: [0x78c0e0, 0x449dd1, 0x192bc2, 0x150578, 0x0e0e52], displayFont: .menlo, bodyFont: .monospaced),
-        generated(name: "Taupe & Linen", hexes: [0xf7f0f5, 0xdecbb7, 0x8f857d, 0x5c5552, 0x433633], displayFont: .baskerville, bodyFont: .defaultSystem),
-        generated(name: "Blue Hour", hexes: [0x1d3461, 0x1f487e, 0x376996, 0x6290c8, 0x829cbc], displayFont: .avenirNext, bodyFont: .rounded),
-        generated(name: "Fern Garden", hexes: [0xe9f5db, 0xcfe1b9, 0xb5c99a, 0x97a97c, 0x718355], displayFont: .defaultSystem, bodyFont: .defaultSystem),
-        generated(name: "Golden Hour", hexes: [0xffd289, 0xfacc6b, 0xffd131, 0xf5b82e, 0xf4ac32], displayFont: .futura, bodyFont: .rounded),
-        generated(name: "Amethyst Dream", hexes: [0xf4effa, 0x2f184b, 0x532b88, 0x9b72cf, 0xc8b1e4], displayFont: .serif, bodyFont: .rounded),
-        generated(name: "Mint Meadow", hexes: [0xdaf2d7, 0xe4fde1, 0xc6edc3, 0xa7dca5, 0x90cf8e], displayFont: .rounded, bodyFont: .rounded),
-        generated(name: "Lavender Fields", hexes: [0xe1d8f7, 0xd7c8f3, 0xd0bef2, 0xc0a7eb, 0xb596e5], displayFont: .optima, bodyFont: .defaultSystem),
-        generated(name: "Cinnamon & Clay", hexes: [0xe6ccb2, 0xddb892, 0xb08968, 0x7f5539, 0x9c6644], displayFont: .georgia, bodyFont: .defaultSystem),
-        generated(name: "Deep Teal", hexes: [0x03312e, 0x037171, 0x009f93, 0x00b9ae, 0x02c3bd], displayFont: .menlo, bodyFont: .defaultSystem),
+    /// Dark counterpart to `generated`, built from the same five source colors: backgrounds
+    /// go dark and text/accents go light instead. Brightness floors here are checked via
+    /// relative luminance rather than HSB brightness — a fully-saturated hue like pure blue
+    /// reads as "bright" in HSB (value 1.0) while its actual luminance is near-zero, which
+    /// let some palettes' accent colors come out too dark to read against a dark background.
+    static func generatedDark(name: String, hexes: [UInt32], displayFont: FontChoice, bodyFont: FontChoice) -> AppTheme {
+        precondition(hexes.count == 5)
+        let byBrightness = hexes.sorted { hsbComponents($0).b < hsbComponents($1).b }
+        let darkest = byBrightness[0]
+        let lightest = byBrightness[4]
+        let middleThree = Array(byBrightness[1...3])
+        let bySaturation = middleThree.sorted { hsbComponents($0).s > hsbComponents($1).s }
+
+        var textPrimary = lightest
+        while relativeLuminance(textPrimary) < 0.55 {
+            textPrimary = mixHex(textPrimary, 0xFFFFFF, 0.4)
+        }
+
+        var darkBase = darkest
+        while relativeLuminance(darkBase) > 0.06 {
+            darkBase = mixHex(darkBase, 0x000000, 0.35)
+        }
+
+        let background = mixHex(darkBase, 0x000000, 0.5)
+        let sidebar = mixHex(darkBase, 0x000000, 0.15)
+        let cardBackground = mixHex(background, 0xFFFFFF, 0.12)
+        let editorBackground = mixHex(background, 0xFFFFFF, 0.08)
+
+        func brightened(_ hex: UInt32) -> UInt32 {
+            var c = hex
+            while relativeLuminance(c) < 0.35 {
+                c = mixHex(c, 0xFFFFFF, 0.35)
+            }
+            return c
+        }
+
+        let accent = brightened(bySaturation[0])
+        let secondaryAccent = brightened(bySaturation[1])
+        let tertiaryAccent = brightened(bySaturation[2])
+        let accentDeep = mixHex(accent, 0xFFFFFF, 0.2)
+
+        let textSecondary = mixHex(textPrimary, background, 0.42)
+        let textTertiary = mixHex(textPrimary, background, 0.66)
+        let divider = mixHex(secondaryAccent, background, 0.85)
+
+        return AppTheme(
+            name: name,
+            accentHex: accent, accentDeepHex: accentDeep, secondaryAccentHex: secondaryAccent, tertiaryAccentHex: tertiaryAccent,
+            backgroundHex: background, sidebarHex: sidebar,
+            cardBackgroundHex: cardBackground, editorBackgroundHex: editorBackground,
+            textPrimaryHex: textPrimary, textSecondaryHex: textSecondary, textTertiaryHex: textTertiary, dividerHex: divider,
+            displayFont: displayFont, bodyFont: bodyFont
+        )
+    }
+
+    /// Whether this theme's own background reads as dark — used to switch native window
+    /// chrome (titlebar, scrollbars) to match, so it doesn't render as a light bar over a
+    /// dark app when a dark preset is active.
+    var isDark: Bool {
+        relativeLuminance(backgroundHex) < 0.18
+    }
+
+    private static let paletteSpecs: [PaletteSpec] = [
+        PaletteSpec(name: "Merlot & Moss", hexes: [0x6a0136, 0xbfab25, 0xb81365, 0x026c7c, 0x055864], displayFont: .serif, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Cosmic Candy", hexes: [0x1b065e, 0xff47da, 0xff87ab, 0xfcc8c2, 0xf5eccd], displayFont: .rounded, bodyFont: .rounded),
+        PaletteSpec(name: "Neon Orchid", hexes: [0x2f2d2e, 0xdadff7, 0x792359, 0xd72483, 0xfd3e81], displayFont: .defaultSystem, bodyFont: .rounded),
+        PaletteSpec(name: "Desert Slate", hexes: [0x628395, 0x96897b, 0xdbad6a, 0xcf995f, 0xd0ce7c], displayFont: .baskerville, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Carnival", hexes: [0x540d6e, 0xee4266, 0xffd23f, 0x3bceac, 0x0ead69], displayFont: .futura, bodyFont: .rounded),
+        PaletteSpec(name: "Harvest Dusk", hexes: [0xe3b505, 0x95190c, 0x610345, 0x107e7d, 0x044b7f], displayFont: .palatino, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Antique Rose", hexes: [0xbfb48f, 0x564e58, 0x904e55, 0xf2efe9, 0x252627], displayFont: .georgia, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Regatta", hexes: [0x06aed5, 0x086788, 0xf0c808, 0xfff1d0, 0xdd1c1a], displayFont: .avenirNext, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Jewel Tone", hexes: [0xffbc42, 0xd81159, 0x8f2d56, 0x218380, 0x73d2de], displayFont: .serif, bodyFont: .rounded),
+        PaletteSpec(name: "Mossy Mint", hexes: [0x1d1e18, 0x6b8f71, 0xaad2ba, 0xd9fff5, 0xb9f5d8], displayFont: .optima, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Twilight Blush", hexes: [0x190b28, 0x685762, 0x9b9987, 0xefa9ae, 0xe55381], displayFont: .serif, bodyFont: .rounded),
+        PaletteSpec(name: "Coastal Linen", hexes: [0xebe9e9, 0xf3f8f2, 0x3581b8, 0xfcb07e, 0xdee2d6], displayFont: .defaultSystem, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Cotton Candy", hexes: [0xbaf2bb, 0xbaf2d8, 0xbad7f2, 0xf2bac9, 0xf2e2ba], displayFont: .rounded, bodyFont: .rounded),
+        PaletteSpec(name: "Peach Blossom", hexes: [0xf2ccc3, 0xe78f8e, 0xffe6e8, 0xacd8aa, 0xf48498], displayFont: .serif, bodyFont: .rounded),
+        PaletteSpec(name: "Velvet Ember", hexes: [0x22162b, 0x451f55, 0x724e91, 0xe54f6d, 0xf8c630], displayFont: .serif, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Marina Sunset", hexes: [0x8ecae6, 0x219ebc, 0x023047, 0xffb703, 0xfb8500], displayFont: .avenirNext, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Olive Grove", hexes: [0x606c38, 0x283618, 0xfefae0, 0xdda15e, 0xbc6c25], displayFont: .georgia, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Tidal Autumn", hexes: [0x264653, 0x2a9d8f, 0xe9c46a, 0xf4a261, 0xe76f51], displayFont: .futura, bodyFont: .rounded),
+        PaletteSpec(name: "Smoked Amber", hexes: [0x04151f, 0x183a37, 0xefd6ac, 0xc44900, 0x432534], displayFont: .palatino, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Wine & Blush", hexes: [0x461220, 0x8c2f39, 0xb23a48, 0xfcb9b2, 0xfed0bb], displayFont: .serif, bodyFont: .rounded),
+        PaletteSpec(name: "Dusty Sunset", hexes: [0xfaa275, 0xff8c61, 0xce6a85, 0x985277, 0x5c374c], displayFont: .rounded, bodyFont: .rounded),
+        PaletteSpec(name: "Sage & Rust", hexes: [0xd4e09b, 0xf6f4d2, 0xcbdfbd, 0xf19c79, 0xa44a3f], displayFont: .optima, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Brick & Violet", hexes: [0xfff8f0, 0x9e2b25, 0x51355a, 0x2a0c4e, 0xf5f8de], displayFont: .defaultSystem, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Orchid Meadow", hexes: [0x805d93, 0xf49fbc, 0xffd3ba, 0x9ebd6e, 0x169873], displayFont: .rounded, bodyFont: .rounded),
+        PaletteSpec(name: "Terracotta Mist", hexes: [0xde6b48, 0xe5b181, 0xf4b9b2, 0xdaedbd, 0x7dbbc3], displayFont: .georgia, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Deep Current", hexes: [0x78c0e0, 0x449dd1, 0x192bc2, 0x150578, 0x0e0e52], displayFont: .menlo, bodyFont: .monospaced),
+        PaletteSpec(name: "Taupe & Linen", hexes: [0xf7f0f5, 0xdecbb7, 0x8f857d, 0x5c5552, 0x433633], displayFont: .baskerville, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Blue Hour", hexes: [0x1d3461, 0x1f487e, 0x376996, 0x6290c8, 0x829cbc], displayFont: .avenirNext, bodyFont: .rounded),
+        PaletteSpec(name: "Fern Garden", hexes: [0xe9f5db, 0xcfe1b9, 0xb5c99a, 0x97a97c, 0x718355], displayFont: .defaultSystem, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Golden Hour", hexes: [0xffd289, 0xfacc6b, 0xffd131, 0xf5b82e, 0xf4ac32], displayFont: .futura, bodyFont: .rounded),
+        PaletteSpec(name: "Amethyst Dream", hexes: [0xf4effa, 0x2f184b, 0x532b88, 0x9b72cf, 0xc8b1e4], displayFont: .serif, bodyFont: .rounded),
+        PaletteSpec(name: "Mint Meadow", hexes: [0xdaf2d7, 0xe4fde1, 0xc6edc3, 0xa7dca5, 0x90cf8e], displayFont: .rounded, bodyFont: .rounded),
+        PaletteSpec(name: "Lavender Fields", hexes: [0xe1d8f7, 0xd7c8f3, 0xd0bef2, 0xc0a7eb, 0xb596e5], displayFont: .optima, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Cinnamon & Clay", hexes: [0xe6ccb2, 0xddb892, 0xb08968, 0x7f5539, 0x9c6644], displayFont: .georgia, bodyFont: .defaultSystem),
+        PaletteSpec(name: "Deep Teal", hexes: [0x03312e, 0x037171, 0x009f93, 0x00b9ae, 0x02c3bd], displayFont: .menlo, bodyFont: .defaultSystem),
     ]
 
-    static let `default` = presets[13]
+    /// Every preset is chosen as one palette (Settings shows one swatch per palette, not
+    /// one per light/dark instance) with its light and dark variants pre-generated as a pair.
+    static let palettes: [ThemePalette] = paletteSpecs.map { spec in
+        ThemePalette(
+            name: spec.name,
+            light: generated(name: spec.name, hexes: spec.hexes, displayFont: spec.displayFont, bodyFont: spec.bodyFont),
+            dark: generatedDark(name: spec.name, hexes: spec.hexes, displayFont: spec.displayFont, bodyFont: spec.bodyFont)
+        )
+    }
+
+    static let defaultPaletteName = "Peach Blossom"
+    static var defaultPalette: ThemePalette { palettes.first { $0.name == defaultPaletteName }! }
+}
+
+/// A palette's light and dark instances, generated from the same five source colors.
+/// `AppTheme.name` on both stays the palette name (not suffixed) — which variant is active
+/// is tracked separately by `ThemeStore.mode`, not encoded into the theme's own name.
+struct ThemePalette: Identifiable {
+    let name: String
+    let light: AppTheme
+    let dark: AppTheme
+    var id: String { name }
 }

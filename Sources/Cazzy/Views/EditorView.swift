@@ -121,6 +121,7 @@ struct EditorView: View {
                     allowsScripts: allowsScripts,
                     allowsPlateGelMaps: allowsPlateGelMaps,
                     plateMapTemplates: store.plateMapTemplates,
+                    specialCharacters: shortcuts.shortcuts,
                     onInsertPlateMap: insertPlateMap,
                     onInsertGelMap: { showingGelImagePicker = true }
                 )
@@ -333,30 +334,57 @@ struct FormattingToolbar: View {
     var allowsScripts: Bool = true
     var allowsPlateGelMaps: Bool = true
     var plateMapTemplates: [PlateMapTemplate] = []
+    var specialCharacters: [SpecialCharacterShortcut] = []
     var onInsertPlateMap: (PlateMapTemplate?, PlateSize) -> Void = { _, _ in }
     var onInsertGelMap: () -> Void = {}
 
+    @State private var showingSpecialCharacters = false
+
     var body: some View {
-        HStack(spacing: 8) {
-            toolButton("bold", "Bold") { controller.wrapSelection(prefix: "**") }
-            toolButton("italic", "Italic") { controller.wrapSelection(prefix: "*") }
-            toolButton("chevron.left.slash.chevron.right", "Code") { controller.wrapSelection(prefix: "`") }
-            if allowsScripts {
-                toolButton("play.rectangle", "Insert code block") {
-                    let block = ExecBlockParser.template()
-                    controller.insertBlock(block.text, cursorOffset: block.cursorOffset)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                toolButton("bold", "Bold") { controller.wrapSelection(prefix: "**") }
+                toolButton("italic", "Italic") { controller.wrapSelection(prefix: "*") }
+                toolButton("chevron.left.slash.chevron.right", "Code") { controller.wrapSelection(prefix: "`") }
+                if allowsScripts {
+                    toolButton("play.rectangle", "Insert code block") {
+                        let block = ExecBlockParser.template()
+                        controller.insertBlock(block.text, cursorOffset: block.cursorOffset)
+                    }
+                }
+                Divider().frame(height: 14)
+                toolButton("textformat.size.larger", "Heading") { controller.prefixCurrentLines(with: "## ") }
+                toolButton("list.bullet", "Bullet list") { controller.prefixCurrentLines(with: "- ") }
+                toolButton("checklist", "Checklist") { controller.prefixCurrentLines(with: "- [ ] ") }
+                Divider().frame(height: 14)
+                specialCharacterButton
+                if allowsPlateGelMaps {
+                    Divider().frame(height: 14)
+                    plateMapMenu
+                    toolButton("chart.bar.doc.horizontal", "Insert gel map") { onInsertGelMap() }
                 }
             }
-            Divider().frame(height: 14)
-            toolButton("textformat.size.larger", "Heading") { controller.prefixCurrentLines(with: "## ") }
-            toolButton("list.bullet", "Bullet list") { controller.prefixCurrentLines(with: "- ") }
-            toolButton("checklist", "Checklist") { controller.prefixCurrentLines(with: "- [ ] ") }
-            if allowsPlateGelMaps {
-                Divider().frame(height: 14)
-                plateMapMenu
-                toolButton("chart.bar.doc.horizontal", "Insert gel map") { onInsertGelMap() }
+        }
+    }
+
+    private var specialCharacterButton: some View {
+        Button {
+            showingSpecialCharacters = true
+        } label: {
+            Image(systemName: "character")
+                .font(.system(size: 12))
+                .frame(width: 26, height: 22)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(theme.textPrimary)
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(theme.cardBackground.opacity(0.5)))
+        .help("Insert special character")
+        .popover(isPresented: $showingSpecialCharacters, arrowEdge: .bottom) {
+            SpecialCharacterPicker(characters: specialCharacters) { shortcut in
+                controller.insertText(shortcut.insertText)
+                showingSpecialCharacters = false
             }
-            Spacer()
+            .environmentObject(theme)
         }
     }
 
@@ -379,7 +407,7 @@ struct FormattingToolbar: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .foregroundStyle(theme.textPrimary)
-        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.white.opacity(0.5)))
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(theme.cardBackground.opacity(0.5)))
         .help("Insert plate map")
     }
 
@@ -391,7 +419,53 @@ struct FormattingToolbar: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(theme.textPrimary)
-        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.white.opacity(0.5)))
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(theme.cardBackground.opacity(0.5)))
         .help(help)
+    }
+}
+
+/// A grid of the user's configured special characters. Hovering a tile shows its name and
+/// keystroke combo (via `.help`); clicking inserts it at the cursor and dismisses the popover.
+private struct SpecialCharacterPicker: View {
+    @EnvironmentObject var theme: ThemeStore
+    var characters: [SpecialCharacterShortcut]
+    var onSelect: (SpecialCharacterShortcut) -> Void
+
+    private let columns = Array(repeating: GridItem(.fixed(36), spacing: 4), count: 8)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Special Characters")
+                .font(theme.bodyFont(11, weight: .semibold))
+                .foregroundStyle(theme.textSecondary)
+
+            if characters.isEmpty {
+                Text("No special characters configured yet. Add some from Settings → Special Characters.")
+                    .font(theme.bodyFont(11))
+                    .foregroundStyle(theme.textTertiary)
+                    .frame(width: 200)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVGrid(columns: columns, spacing: 4) {
+                        ForEach(characters) { shortcut in
+                            Button {
+                                onSelect(shortcut)
+                            } label: {
+                                Text(shortcut.insertText)
+                                    .font(.system(size: 16))
+                                    .frame(width: 36, height: 32)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(theme.textPrimary)
+                            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(theme.editorBackground))
+                            .help("\(shortcut.label) (\(shortcut.displayCombo))")
+                        }
+                    }
+                }
+                .frame(width: 320, height: 320)
+            }
+        }
+        .padding(12)
     }
 }

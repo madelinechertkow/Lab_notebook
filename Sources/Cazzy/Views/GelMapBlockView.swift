@@ -116,7 +116,7 @@ struct GelMapBlockView: View {
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
             .background(Capsule().fill(theme.accent.opacity(0.85)))
-            .foregroundStyle(.white)
+            .foregroundStyle(theme.accent.readableForeground)
             .position(x: lane.xPosition * size.width, y: 14)
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .named("gelCanvas"))
@@ -166,7 +166,7 @@ struct GelMapBlockView: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(Capsule().fill(theme.secondaryAccent.opacity(0.85)))
-            .foregroundStyle(.white)
+            .foregroundStyle(theme.secondaryAccent.readableForeground)
             .position(x: 30, y: band.yPosition * size.height)
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .named("gelCanvas"))

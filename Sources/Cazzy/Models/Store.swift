@@ -60,7 +60,52 @@ final class NoteStore: ObservableObject {
     }
 
     func visibleNotebooks() -> [Notebook] {
-        notebooks.filter { labModeFilter.matches($0.labMode) }
+        notebooks.filter { labModeFilter.matches($0.labMode) && !$0.isArchived }
+    }
+
+    func archivedNotebooks() -> [Notebook] {
+        notebooks.filter { $0.isArchived }
+    }
+
+    /// Hides a notebook from the sidebar and "All Notes" without touching its notes —
+    /// the reversible first step before a permanent deleteNotebook(_:). Refuses to
+    /// archive the last non-archived notebook, since note creation always needs
+    /// somewhere to land.
+    @discardableResult
+    func archiveNotebook(_ notebook: Notebook) -> Bool {
+        guard notebooks.filter({ !$0.isArchived }).count > 1 else { return false }
+        guard let index = notebooks.firstIndex(where: { $0.id == notebook.id }) else { return false }
+        notebooks[index].isArchived = true
+        save()
+        return true
+    }
+
+    func unarchiveNotebook(_ notebook: Notebook) {
+        guard let index = notebooks.firstIndex(where: { $0.id == notebook.id }) else { return }
+        notebooks[index].isArchived = false
+        save()
+    }
+
+    /// Deletes a notebook and every note inside it (notes have no other home,
+    /// so leaving them behind would just make them silently unreachable).
+    /// Refuses to delete the last remaining notebook, since note creation
+    /// always needs somewhere to land. Goes through save() like everything
+    /// else, so it's fully covered by app-wide undo if this was a mistake.
+    @discardableResult
+    func deleteNotebook(_ notebook: Notebook) -> Bool {
+        guard notebooks.count > 1 else { return false }
+        notes.removeAll { $0.notebookID == notebook.id }
+        notebooks.removeAll { $0.id == notebook.id }
+        save()
+        return true
+    }
+
+    @discardableResult
+    func createNotebook(name: String, symbol: String, labMode: LabMode?) -> Notebook {
+        let notebook = Notebook(name: name, symbol: symbol, colorIndex: notebooks.count, labMode: labMode)
+        notebooks.append(notebook)
+        save()
+        return notebook
     }
 
     private struct SavedData: Codable, Equatable {
@@ -176,19 +221,37 @@ final class NoteStore: ObservableObject {
         undoTick += 1
     }
 
-    func notes(in notebookID: UUID?) -> [Note] {
-        let filtered: [Note]
+    /// `tag` scopes to notes carrying that exact tag, independent of `notebookID` — tags are
+    /// a cross-cutting grouping, so selecting one in the sidebar passes `notebookID: nil` to
+    /// search across every visible notebook rather than confining it to whichever notebook
+    /// happened to be selected before.
+    func notes(in notebookID: UUID?, tag: String? = nil) -> [Note] {
+        let scoped: [Note]
         if let notebookID {
-            filtered = notes.filter { $0.notebookID == notebookID }
+            scoped = notes.filter { $0.notebookID == notebookID && !$0.isArchived }
         } else {
             let visibleIDs = Set(visibleNotebooks().map { $0.id })
-            filtered = notes.filter { visibleIDs.contains($0.notebookID) }
+            scoped = notes.filter { visibleIDs.contains($0.notebookID) && !$0.isArchived }
         }
+        let filtered = tag.map { t in scoped.filter { $0.tags.contains(t) } } ?? scoped
         return filtered.sorted { $0.updatedAt > $1.updatedAt }
     }
 
-    func search(_ query: String, in notebookID: UUID?) -> [Note] {
-        let base = notes(in: notebookID)
+    /// Archived notes for the same scope as notes(in:tag:) — nil notebookID means "All Notes" scope.
+    func archivedNotes(in notebookID: UUID?, tag: String? = nil) -> [Note] {
+        let scoped: [Note]
+        if let notebookID {
+            scoped = notes.filter { $0.notebookID == notebookID && $0.isArchived }
+        } else {
+            let visibleIDs = Set(visibleNotebooks().map { $0.id })
+            scoped = notes.filter { visibleIDs.contains($0.notebookID) && $0.isArchived }
+        }
+        let filtered = tag.map { t in scoped.filter { $0.tags.contains(t) } } ?? scoped
+        return filtered.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    func search(_ query: String, in notebookID: UUID?, tag: String? = nil) -> [Note] {
+        let base = notes(in: notebookID, tag: tag)
         guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return base }
         let q = query.lowercased()
         return base.filter {
@@ -216,6 +279,18 @@ final class NoteStore: ObservableObject {
 
     func deleteNote(_ note: Note) {
         notes.removeAll { $0.id == note.id }
+        save()
+    }
+
+    func archiveNote(_ note: Note) {
+        guard let idx = notes.firstIndex(where: { $0.id == note.id }) else { return }
+        notes[idx].isArchived = true
+        save()
+    }
+
+    func unarchiveNote(_ note: Note) {
+        guard let idx = notes.firstIndex(where: { $0.id == note.id }) else { return }
+        notes[idx].isArchived = false
         save()
     }
 

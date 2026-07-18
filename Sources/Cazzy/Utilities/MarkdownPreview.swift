@@ -52,6 +52,7 @@ struct MarkdownPreview: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(20)
         }
+        .scrollContentBackground(.hidden)
     }
 }
 

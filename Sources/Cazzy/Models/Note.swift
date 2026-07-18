@@ -126,9 +126,12 @@ struct Note: Identifiable, Codable, Equatable {
     var plateMapResults: [String: PlateMapInstance] = [:]
     /// Keyed by block ID.
     var gelMapResults: [String: GelMapInstance] = [:]
+    /// Archived notes are hidden from "All Notes" and their notebook's list, but not
+    /// deleted — the reversible first step before a permanent deleteNote(_:).
+    var isArchived: Bool = false
 
     enum CodingKeys: String, CodingKey {
-        case id, notebookID, title, content, tags, createdAt, updatedAt, executionLanguage, codeEnvironmentID, codeBlockResults, plateMapResults, gelMapResults
+        case id, notebookID, title, content, tags, createdAt, updatedAt, executionLanguage, codeEnvironmentID, codeBlockResults, plateMapResults, gelMapResults, isArchived
     }
 
     init(
@@ -143,7 +146,8 @@ struct Note: Identifiable, Codable, Equatable {
         codeEnvironmentID: UUID? = nil,
         codeBlockResults: [String: CodeBlockResult] = [:],
         plateMapResults: [String: PlateMapInstance] = [:],
-        gelMapResults: [String: GelMapInstance] = [:]
+        gelMapResults: [String: GelMapInstance] = [:],
+        isArchived: Bool = false
     ) {
         self.id = id
         self.notebookID = notebookID
@@ -157,6 +161,7 @@ struct Note: Identifiable, Codable, Equatable {
         self.codeBlockResults = codeBlockResults
         self.plateMapResults = plateMapResults
         self.gelMapResults = gelMapResults
+        self.isArchived = isArchived
     }
 
     init(from decoder: Decoder) throws {
@@ -173,6 +178,7 @@ struct Note: Identifiable, Codable, Equatable {
         codeBlockResults = try container.decodeIfPresent([String: CodeBlockResult].self, forKey: .codeBlockResults) ?? [:]
         plateMapResults = try container.decodeIfPresent([String: PlateMapInstance].self, forKey: .plateMapResults) ?? [:]
         gelMapResults = try container.decodeIfPresent([String: GelMapInstance].self, forKey: .gelMapResults) ?? [:]
+        isArchived = try container.decodeIfPresent(Bool.self, forKey: .isArchived) ?? false
     }
 
     var preview: String {

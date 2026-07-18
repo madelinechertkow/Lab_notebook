@@ -26,6 +26,8 @@ struct CazzyApp: App {
                 .environmentObject(themeStore)
                 .environmentObject(shortcutStore)
                 .frame(minWidth: 900, minHeight: 600)
+                .syncSystemAppearance(with: themeStore)
+                .preferredColorScheme(forcedColorScheme)
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
@@ -47,6 +49,8 @@ struct CazzyApp: App {
                 .environmentObject(store)
                 .environmentObject(themeStore)
                 .frame(minWidth: 300, minHeight: 360)
+                .syncSystemAppearance(with: themeStore)
+                .preferredColorScheme(forcedColorScheme)
         }
         .defaultSize(width: 360, height: 480)
 
@@ -56,6 +60,8 @@ struct CazzyApp: App {
                 .environmentObject(themeStore)
                 .environmentObject(appleCalendar)
                 .frame(minWidth: 900, minHeight: 560)
+                .syncSystemAppearance(with: themeStore)
+                .preferredColorScheme(forcedColorScheme)
         }
         .defaultSize(width: 1050, height: 720)
 
@@ -65,5 +71,12 @@ struct CazzyApp: App {
                 .environmentObject(themeStore)
                 .environmentObject(shortcutStore)
         }
+    }
+
+    /// `nil` in `.auto` mode so the window naturally follows the real system appearance
+    /// (which is exactly what `.auto` should do); an explicit override otherwise so native
+    /// chrome matches the user's chosen light/dark theme regardless of the system setting.
+    private var forcedColorScheme: ColorScheme? {
+        themeStore.mode == .auto ? nil : (themeStore.theme.isDark ? .dark : .light)
     }
 }

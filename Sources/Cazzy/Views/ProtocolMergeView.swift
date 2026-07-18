@@ -69,6 +69,7 @@ struct ProtocolMergeView: View {
                 }
                 .padding(20)
             }
+            .scrollContentBackground(.hidden)
 
             Divider().overlay(theme.divider)
 

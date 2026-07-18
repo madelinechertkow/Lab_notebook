@@ -35,6 +35,7 @@ struct CalendarWeekGrid: View {
                 }
                 .frame(height: Self.hourHeight * 24)
             }
+            .scrollContentBackground(.hidden)
             .onAppear {
                 // Land the viewport at the start of a plausible lab day, not midnight.
                 proxy.scrollTo("hour-marker-7", anchor: .top)
@@ -345,6 +346,14 @@ private struct ExperimentBlock: View {
         }
     }
 
+    // Completed blocks render at 0.35 opacity, so the fill is mostly the light week-grid
+    // background showing through regardless of the experiment color's own darkness —
+    // theme.textPrimary reads reliably there, while active blocks are solid enough that
+    // the color's own luminance determines whether white or black text is legible.
+    private var blockForeground: Color {
+        experiment.isCompleted ? theme.textPrimary : experiment.color.color.readableForeground
+    }
+
     private func blockContent(height: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: 6, style: .continuous)
             .fill(experiment.color.color.opacity(experiment.isCompleted ? 0.35 : 0.85))
@@ -370,7 +379,7 @@ private struct ExperimentBlock: View {
                             .opacity(0.85)
                     }
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(blockForeground)
                 .padding(.horizontal, 5)
                 .padding(.top, 3)
             }
@@ -378,7 +387,7 @@ private struct ExperimentBlock: View {
                 if continuesPastMidnight {
                     Text("continues →")
                         .font(theme.bodyFont(8))
-                        .foregroundStyle(.white.opacity(0.9))
+                        .foregroundStyle(blockForeground.opacity(0.9))
                         .padding(3)
                 }
             }

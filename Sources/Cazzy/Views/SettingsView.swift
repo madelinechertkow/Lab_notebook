@@ -56,12 +56,26 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Appearance") {
+                Picker("Mode", selection: $theme.mode) {
+                    ForEach(ThemeMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                if theme.mode == .auto {
+                    Text("Follows your Mac's system appearance (Light/Dark/Auto in System Settings → Appearance).")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Presets") {
                 ThinHorizontalScroll {
                     HStack(spacing: 16) {
-                        ForEach(AppTheme.presets, id: \.name) { preset in
-                            PresetSwatch(preset: preset, isSelected: theme.theme.name == preset.name) {
-                                theme.apply(preset)
+                        ForEach(AppTheme.palettes) { palette in
+                            PresetSwatch(palette: palette, isSelected: theme.paletteName == palette.name) {
+                                theme.selectPalette(palette.name)
                             }
                         }
                     }
@@ -111,7 +125,7 @@ struct SettingsView: View {
 
             Section {
                 Button("Reset to Default") {
-                    theme.apply(.default)
+                    theme.resetToDefault()
                 }
             }
         }
@@ -131,7 +145,7 @@ struct SettingsView: View {
 }
 
 private struct PresetSwatch: View {
-    let preset: AppTheme
+    let palette: ThemePalette
     let isSelected: Bool
     let action: () -> Void
 
@@ -139,30 +153,55 @@ private struct PresetSwatch: View {
         Button(action: action) {
             VStack(spacing: 6) {
                 ZStack {
+                    // Light half on top, dark half on bottom — the swatch now represents a
+                    // palette (both variants), not one fixed instance, so it shows the pair.
+                    HalfCircle(top: true).fill(Color(hex: palette.light.backgroundHex))
+                    HalfCircle(top: false).fill(Color(hex: palette.dark.backgroundHex))
                     Circle()
-                        .fill(Color(hex: preset.backgroundHex))
-                        .frame(width: 40, height: 40)
-                    Circle()
-                        .trim(from: 0, to: 0.7)
-                        .stroke(Color(hex: preset.accentHex), lineWidth: 6)
-                        .frame(width: 40, height: 40)
+                        .trim(from: 0, to: 0.35)
+                        .stroke(Color(hex: palette.light.accentHex), lineWidth: 6)
                         .rotationEffect(.degrees(-90))
+                    Circle()
+                        .trim(from: 0, to: 0.35)
+                        .stroke(Color(hex: palette.dark.accentHex), lineWidth: 6)
+                        .rotationEffect(.degrees(90))
                     if isSelected {
                         Image(systemName: "checkmark")
                             .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(Color(hex: preset.accentDeepHex))
+                            .foregroundStyle(Color(hex: palette.light.accentDeepHex))
+                            .padding(4)
+                            .background(Circle().fill(Color(hex: palette.light.backgroundHex).opacity(0.85)))
                     }
                 }
+                .frame(width: 40, height: 40)
                 .overlay(
                     Circle()
-                        .stroke(isSelected ? Color(hex: preset.accentDeepHex) : Color.clear, lineWidth: 2)
+                        .stroke(isSelected ? Color(hex: palette.light.accentDeepHex) : Color.clear, lineWidth: 2)
                         .frame(width: 47, height: 47)
                 )
-                Text(preset.name)
+                Text(palette.name)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct HalfCircle: Shape {
+    let top: Bool
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) / 2
+        path.move(to: center)
+        if top {
+            path.addArc(center: center, radius: radius, startAngle: .degrees(180), endAngle: .degrees(360), clockwise: false)
+        } else {
+            path.addArc(center: center, radius: radius, startAngle: .degrees(0), endAngle: .degrees(180), clockwise: false)
+        }
+        path.closeSubpath()
+        return path
     }
 }

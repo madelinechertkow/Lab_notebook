@@ -176,6 +176,7 @@ struct ExecBlockView: View {
                                 .font(.system(size: 11, design: .monospaced))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .scrollContentBackground(.hidden)
                         .frame(maxHeight: 160)
                     }
                 }

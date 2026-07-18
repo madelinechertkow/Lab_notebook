@@ -10,6 +10,7 @@ struct ProtocolListView: View {
     @State private var mergeContext: MergeContext?
     @State private var importErrorMessage: String?
     @State private var infoBanner: String?
+    @State private var protocolPendingDeletion: LabProtocol?
 
     private struct MergeContext: Identifiable {
         let id: UUID
@@ -74,7 +75,7 @@ struct ProtocolListView: View {
                     .font(theme.bodyFont(13))
             }
             .padding(8)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.6)))
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.cardBackground.opacity(0.6)))
             .padding(.horizontal, 16)
             .padding(.bottom, 10)
 
@@ -98,6 +99,13 @@ struct ProtocolListView: View {
                             .tag(protocolItem.id)
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    protocolPendingDeletion = protocolItem
+                                } label: {
+                                    Label("Delete Protocol…", systemImage: "trash")
+                                }
+                            }
                     }
                     .onDelete(perform: deleteProtocols)
                 }
@@ -128,6 +136,21 @@ struct ProtocolListView: View {
             Button("OK", role: .cancel) { importErrorMessage = nil }
         } message: {
             Text(importErrorMessage ?? "")
+        }
+        .alert(item: $protocolPendingDeletion) { protocolItem in
+            Alert(
+                title: Text("Delete \"\(protocolItem.name.isEmpty ? "Untitled Protocol" : protocolItem.name)\"?"),
+                message: Text(protocolItem.versions.isEmpty
+                    ? "You can undo this with ⌘Z."
+                    : "This will also delete all \(protocolItem.versions.count) saved version\(protocolItem.versions.count == 1 ? "" : "s"). You can undo this with ⌘Z."),
+                primaryButton: .destructive(Text("Delete")) {
+                    if selectedProtocolID == protocolItem.id {
+                        selectedProtocolID = nil
+                    }
+                    store.deleteProtocol(protocolItem)
+                },
+                secondaryButton: .cancel()
+            )
         }
     }
 

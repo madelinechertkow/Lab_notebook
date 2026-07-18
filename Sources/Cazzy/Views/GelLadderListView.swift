@@ -44,7 +44,7 @@ struct GelLadderListView: View {
                     .font(theme.bodyFont(13))
             }
             .padding(8)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.6)))
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.cardBackground.opacity(0.6)))
             .padding(.horizontal, 16)
             .padding(.bottom, 10)
 

@@ -35,4 +35,15 @@ enum LabModeFilter: String, CaseIterable, Identifiable {
         case .dry: return mode == .dry
         }
     }
+
+    /// A newly-created notebook defaults to whichever lab mode the sidebar is currently
+    /// filtered to, so it shows up immediately instead of seeming to vanish; "All" has no
+    /// single mode to default to, so it falls back to shared (nil, visible everywhere).
+    var defaultLabModeForNewNotebook: LabMode? {
+        switch self {
+        case .all: return nil
+        case .wet: return .wet
+        case .dry: return .dry
+        }
+    }
 }

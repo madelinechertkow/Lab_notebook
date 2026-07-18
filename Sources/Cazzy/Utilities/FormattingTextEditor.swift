@@ -38,6 +38,15 @@ final class EditorController: ObservableObject {
         textView.didChangeText()
     }
 
+    /// Inserts text at the cursor (replacing any selection) with the cursor left right after
+    /// it — used by the special-character picker, which has no wrapping semantics.
+    func insertText(_ text: String) {
+        guard let textView else { return }
+        let range = textView.selectedRange()
+        textView.insertText(text, replacementRange: range)
+        textView.didChangeText()
+    }
+
     func prefixCurrentLines(with prefix: String) {
         guard let textView, let storage = textView.textStorage else { return }
         let nsString = storage.string as NSString
@@ -48,7 +57,10 @@ final class EditorController: ObservableObject {
 
         var rebuilt: [String] = []
         for line in lines {
-            if line.isEmpty {
+            // Blank separator lines within a multi-line selection stay blank (so a paragraph
+            // break doesn't grow a stray bullet); a lone blank line — e.g. a brand-new note —
+            // still needs the prefix, or these buttons would never do anything on it.
+            if line.isEmpty && lines.count > 1 {
                 rebuilt.append(line)
             } else if line.hasPrefix(prefix) {
                 rebuilt.append(String(line.dropFirst(prefix.count)))

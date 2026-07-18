@@ -6,17 +6,30 @@ struct NoteListView: View {
     var sidebarSelection: SidebarItem?
     @Binding var selectedNoteID: UUID?
     @State private var searchText: String = ""
+    @State private var notePendingDeletion: Note?
 
     private var notebookID: UUID? {
         if case .notebook(let id) = sidebarSelection { return id }
         return nil
     }
 
+    /// Tags are a cross-cutting grouping rather than notebook-scoped, so selecting one
+    /// searches across every visible notebook (notebookID stays nil whenever a tag is active).
+    private var selectedTag: String? {
+        if case .tag(let name) = sidebarSelection { return name }
+        return nil
+    }
+
     private var notes: [Note] {
-        store.search(searchText, in: notebookID)
+        store.search(searchText, in: notebookID, tag: selectedTag)
+    }
+
+    private var archivedNotes: [Note] {
+        store.archivedNotes(in: notebookID, tag: selectedTag)
     }
 
     private var titleText: String {
+        if let selectedTag { return "#\(selectedTag)" }
         if let notebookID, let nb = store.notebooks.first(where: { $0.id == notebookID }) {
             return nb.name
         }
@@ -51,13 +64,13 @@ struct NoteListView: View {
                     .font(theme.bodyFont(13))
             }
             .padding(8)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.6)))
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.cardBackground.opacity(0.6)))
             .padding(.horizontal, 16)
             .padding(.bottom, 10)
 
             Divider().overlay(theme.divider)
 
-            if notes.isEmpty {
+            if notes.isEmpty && archivedNotes.isEmpty {
                 Spacer()
                 VStack(spacing: 8) {
                     Image(systemName: "leaf.fill")
@@ -70,19 +83,72 @@ struct NoteListView: View {
                 Spacer()
             } else {
                 List(selection: $selectedNoteID) {
-                    ForEach(notes) { note in
-                        NoteRow(note: note)
-                            .tag(note.id)
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
+                    if !notes.isEmpty {
+                        ForEach(notes) { note in
+                            NoteRow(note: note)
+                                .tag(note.id)
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                                .contextMenu {
+                                    Button {
+                                        store.archiveNote(note)
+                                    } label: {
+                                        Label("Archive Note", systemImage: "archivebox")
+                                    }
+                                    Button(role: .destructive) {
+                                        notePendingDeletion = note
+                                    } label: {
+                                        Label("Delete Note…", systemImage: "trash")
+                                    }
+                                }
+                        }
+                        .onDelete(perform: deleteNotes)
                     }
-                    .onDelete(perform: deleteNotes)
+
+                    if !archivedNotes.isEmpty {
+                        Section {
+                            ForEach(archivedNotes) { note in
+                                NoteRow(note: note)
+                                    .tag(note.id)
+                                    .opacity(0.6)
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
+                                    .contextMenu {
+                                        Button {
+                                            store.unarchiveNote(note)
+                                        } label: {
+                                            Label("Unarchive", systemImage: "arrow.uturn.backward")
+                                        }
+                                        Button(role: .destructive) {
+                                            notePendingDeletion = note
+                                        } label: {
+                                            Label("Delete Permanently…", systemImage: "trash")
+                                        }
+                                    }
+                            }
+                        } header: {
+                            Text("Archived")
+                                .foregroundStyle(theme.textSecondary)
+                        }
+                    }
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             }
         }
         .background(theme.background)
+        .alert(item: $notePendingDeletion) { note in
+            Alert(
+                title: Text("Delete \"\(note.title.isEmpty ? "Untitled" : note.title)\"?"),
+                message: Text("You can undo this with ⌘Z."),
+                primaryButton: .destructive(Text("Delete")) {
+                    let wasSelected = selectedNoteID == note.id
+                    store.deleteNote(note)
+                    if wasSelected { selectedNoteID = nil }
+                },
+                secondaryButton: .cancel()
+            )
+        }
     }
 
     private func createNote() {

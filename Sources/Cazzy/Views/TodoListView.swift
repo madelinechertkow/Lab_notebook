@@ -60,6 +60,7 @@ struct TodoListView: View {
                         dayContent(weekday)
                     }
                 }
+                .scrollContentBackground(.hidden)
             }
 
             Divider().overlay(theme.divider)
@@ -113,6 +114,7 @@ struct TodoListView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
     }
 
     private var weekContent: some View {
@@ -180,7 +182,7 @@ private struct DayChip: View {
                 .background(
                     Capsule().fill(isSelected ? theme.accentDeep : theme.secondaryAccent.opacity(0.18))
                 )
-                .foregroundStyle(isSelected ? Color.white : theme.textSecondary)
+                .foregroundStyle(isSelected ? theme.accentDeep.readableForeground : theme.textSecondary)
         }
         .buttonStyle(.plain)
     }
