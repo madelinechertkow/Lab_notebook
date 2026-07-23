@@ -77,5 +77,16 @@ struct ContentView: View {
                 selectedNoteID = noteID
             }
         }
+        .alert(
+            "Couldn't Load Your Notebook Data",
+            isPresented: Binding(
+                get: { store.dataRecoveryNotice != nil },
+                set: { if !$0 { store.dismissDataRecoveryNotice() } }
+            )
+        ) {
+            Button("OK") { store.dismissDataRecoveryNotice() }
+        } message: {
+            Text(store.dataRecoveryNotice ?? "")
+        }
     }
 }

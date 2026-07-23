@@ -25,6 +25,12 @@ final class NoteStore: ObservableObject {
     /// hold local @State copies (note editor, protocol editor) watch this to reload.
     @Published private(set) var undoTick = 0
 
+    /// Set when an existing data.json couldn't be decoded (e.g. an app update changed the
+    /// schema incompatibly). The raw file is backed up rather than discarded so nothing is
+    /// permanently lost; this tells the UI to warn the user and point at the backup instead
+    /// of silently working atop freshly-seeded sample data.
+    @Published private(set) var dataRecoveryNotice: String?
+
     private let fileURL: URL
 
     // Whole-state snapshots make undo trivially correct for every mutation because all
@@ -157,8 +163,20 @@ final class NoteStore: ObservableObject {
     }
 
     func load() {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            // No data.json at all — genuinely first launch, safe to seed samples.
+            seedDefaults()
+            return
+        }
         guard let data = try? Data(contentsOf: fileURL),
               let decoded = try? JSONDecoder().decode(SavedData.self, from: data) else {
+            // A real data file exists but couldn't be read (e.g. an app update from the
+            // git repo changed the model in an incompatible way, or the file got
+            // corrupted). Falling back to seedDefaults() here would look fine in the UI
+            // but the very next save() would overwrite data.json with sample data,
+            // permanently destroying the user's real notes. Back the unreadable file up
+            // untouched instead, and only show sample data in memory.
+            backUpUnreadableDataFile()
             seedDefaults()
             return
         }
@@ -171,6 +189,21 @@ final class NoteStore: ObservableObject {
         self.gelLadderPresets = decoded.gelLadderPresets
         self.codeEnvironments = decoded.codeEnvironments
         self.lastSavedState = decoded
+    }
+
+    private func backUpUnreadableDataFile() {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+        let backupURL = fileURL.deletingLastPathComponent()
+            .appendingPathComponent("data-recovered-\(formatter.string(from: Date())).json")
+        try? FileManager.default.copyItem(at: fileURL, to: backupURL)
+        dataRecoveryNotice = "Your saved notebook data couldn't be read, possibly because of an app update. "
+            + "It has NOT been deleted — a copy was saved to:\n\(backupURL.path)\n\n"
+            + "The app is currently showing sample notebooks. Contact the developer with that backup file to recover your notes."
+    }
+
+    func dismissDataRecoveryNotice() {
+        dataRecoveryNotice = nil
     }
 
     func save() {

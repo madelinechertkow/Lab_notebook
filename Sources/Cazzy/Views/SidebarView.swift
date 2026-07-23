@@ -150,7 +150,7 @@ struct SidebarView: View {
                                 .foregroundStyle(theme.textSecondary)
                         }
                     } icon: {
-                        Image(systemName: notebook.symbol)
+                        NotebookSymbolIcon(symbol: notebook.symbol)
                             .foregroundStyle(theme.notebookAccent(index))
                     }
                     .tag(SidebarItem.notebook(notebook.id))
@@ -333,16 +333,48 @@ private struct NewNotebookPopover: View {
     @State private var symbol: String
     @State private var labMode: LabMode?
 
-    /// A small curated set rather than a full SF Symbols browser — matches the icons already
-    /// used by `Notebook.defaults()` plus a few more common lab-notebook subjects, including
-    /// some science-specific ones (atom, microbe, brain, DNA-adjacent hex grid) for variety.
+    /// The original curated set, plus the SF Symbols "Health" category in full and a handful
+    /// of other requested additions (animals, devices, interface windows, clock).
     private static let symbolChoices = [
         "book.closed.fill", "cross.vial.fill", "chart.xyaxis.line", "terminal.fill",
         "books.vertical.fill", "pencil.and.outline", "person.2.fill", "sparkles",
         "flask.fill", "folder.fill", "tag.fill", "star.fill",
         "atom", "microbe.fill", "brain.head.profile", "waveform.path.ecg",
         "stethoscope", "thermometer", "bolt.fill", "globe.americas.fill",
-        "moon.stars.fill", "eyedropper", "circle.hexagongrid.fill", "leaf.fill"
+        "moon.stars.fill", "eyedropper", "circle.hexagongrid.fill", "leaf.fill",
+        "cat.fill", "dog.fill", "lizard.fill", "fish.fill",
+        "ant.fill", "snowflake", "pc", "macpro.gen3",
+        "testtube.2", "macwindow", "text.and.command.macwindow", "keyboard.macwindow",
+        "clock.fill", "allergens", "allergens.fill", "apple.meditate",
+        "apple.meditate.circle", "apple.meditate.circle.fill", "apple.meditate.square.stack", "apple.meditate.square.stack.fill",
+        "bandage", "bandage.fill", "bed.double", "bed.double.badge.checkmark",
+        "bed.double.badge.checkmark.fill", "bed.double.circle", "bed.double.circle.fill", "bed.double.fill",
+        "blood.pressure.cuff", "blood.pressure.cuff.badge.gauge.with.needle", "blood.pressure.cuff.badge.gauge.with.needle.fill", "blood.pressure.cuff.fill",
+        "bolt.heart", "bolt.heart.fill", "brain", "brain.fill",
+        "brain.filled.head.profile", "brain.head.profile.fill", "bubbles.and.sparkles", "bubbles.and.sparkles.fill",
+        "chart.line.text.clipboard", "chart.line.text.clipboard.fill", "cross", "cross.case",
+        "cross.case.circle", "cross.case.circle.fill", "cross.case.fill", "cross.circle",
+        "cross.circle.fill", "cross.fill", "cross.vial", "ear",
+        "ear.badge.checkmark", "ear.badge.waveform", "ear.fill", "ear.trianglebadge.exclamationmark",
+        "eye", "eye.circle", "eye.circle.fill", "eye.fill",
+        "eye.slash", "eye.slash.fill", "eye.square", "eye.square.fill",
+        "eye.trianglebadge.exclamationmark", "eye.trianglebadge.exclamationmark.fill", "facemask", "facemask.fill",
+        "hearingdevice.and.signal.meter", "hearingdevice.and.signal.meter.fill", "hearingdevice.ear", "hearingdevice.ear.fill",
+        "heart", "heart.badge.bolt", "heart.badge.bolt.fill", "heart.badge.bolt.slash",
+        "heart.badge.bolt.slash.fill", "heart.circle", "heart.circle.fill", "heart.fill",
+        "heart.text.clipboard", "heart.text.clipboard.fill", "heart.text.square", "heart.text.square.fill",
+        "ivfluid.bag", "ivfluid.bag.fill", "list.bullet.clipboard", "list.bullet.clipboard.fill",
+        "list.clipboard", "list.clipboard.fill", "lock.heart", "lock.heart.fill",
+        "lungs", "lungs.fill", "medical.thermometer", "medical.thermometer.fill",
+        "microbe", "microbe.circle", "microbe.circle.fill", "pencil.and.list.clipboard",
+        "pill", "pill.circle", "pill.circle.fill", "pill.fill",
+        "pills", "pills.circle", "pills.circle.fill", "pills.fill",
+        "sparkle.text.clipboard", "sparkle.text.clipboard.fill", "staroflife", "staroflife.circle",
+        "staroflife.circle.fill", "staroflife.fill", "stethoscope.circle", "stethoscope.circle.fill",
+        "syringe", "syringe.fill", "thermometer.variable", "thermometer.variable.and.figure",
+        "thermometer.variable.and.figure.circle", "thermometer.variable.and.figure.circle.fill", "thermometer.variable.badge.clock", "thermometer.variable.badge.play",
+        "vial.viewfinder", "waveform.path.ecg.rectangle", "waveform.path.ecg.rectangle.fill", "waveform.path.ecg.text.clipboard",
+        "waveform.path.ecg.text.clipboard.fill"
     ]
 
     init(defaultLabMode: LabMode?, onCreate: @escaping (String, String, LabMode?) -> Void) {
@@ -365,21 +397,24 @@ private struct NewNotebookPopover: View {
                 .textFieldStyle(.roundedBorder)
                 .onSubmit(create)
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 6) {
-                ForEach(Self.symbolChoices, id: \.self) { choice in
-                    Button {
-                        symbol = choice
-                    } label: {
-                        Image(systemName: choice)
-                            .font(.system(size: 14))
-                            .frame(width: 26, height: 26)
-                            .background(
-                                Circle().fill(symbol == choice ? Color.accentColor.opacity(0.25) : Color.clear)
-                            )
+            ScrollView {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 6) {
+                    ForEach(Self.symbolChoices, id: \.self) { choice in
+                        Button {
+                            symbol = choice
+                        } label: {
+                            Image(systemName: choice)
+                                .font(.system(size: 14))
+                                .frame(width: 26, height: 26)
+                                .background(
+                                    Circle().fill(symbol == choice ? Color.accentColor.opacity(0.25) : Color.clear)
+                                )
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
+            .frame(maxHeight: 180)
 
             Picker("Lab mode", selection: $labMode) {
                 Text("Shared").tag(LabMode?.none)
