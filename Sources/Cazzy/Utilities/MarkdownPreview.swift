@@ -69,10 +69,11 @@ struct MarkdownPreview: View {
 //
 // Two things `Text` fundamentally can't do get special-cased on top of that block split:
 // inline images (`![alt](...)`, detected via `run.imageURL`, rendered as a real `Image`
-// instead of text) and underline (`<u>text</u>` — Markdown has no native underline syntax,
-// and Apple's parser leaves the literal `<u>`/`</u>` characters on screen rather than
-// styling them, so they're swapped for sentinel characters before parsing and turned into a
-// real `.underlineStyle` afterward — see `preprocessUnderline`/`applyUnderlineMarkers`).
+// instead of text) and `<u>`/`<sup>`/`<sub>` — Markdown has no native syntax for underline,
+// superscript, or subscript, and Apple's parser leaves those literal tag characters on
+// screen rather than styling them, so they're swapped for sentinel characters before parsing
+// and turned into real attributes afterward — see `preprocessInlineStyleTags`/
+// `applyInlineStyleMarkers`.
 
 private enum MarkdownBlockKind {
     case header(level: Int)
@@ -119,34 +120,69 @@ private func markdownBlockKind(for components: [PresentationIntent.IntentType]) 
     return .paragraph
 }
 
-// MARK: - <u>underline</u> via sentinel markers
+// MARK: - <u>, <sup>, <sub> via sentinel markers
+//
+// Markdown has no native syntax for underline, superscript, or subscript. Apple's parser
+// recognizes these as raw inline HTML but leaves the literal tag characters in the text
+// rather than styling anything, so each tag pair is swapped for a private-use-area sentinel
+// character before parsing (immune to any markdown escaping) and turned into a real
+// AttributedString attribute afterward, with the sentinels stripped back out.
 
 private let underlineStartMarker: Character = "\u{E000}"
 private let underlineEndMarker: Character = "\u{E001}"
+private let superscriptStartMarker: Character = "\u{E002}"
+private let superscriptEndMarker: Character = "\u{E003}"
+private let subscriptStartMarker: Character = "\u{E004}"
+private let subscriptEndMarker: Character = "\u{E005}"
 
-private func preprocessUnderline(_ text: String) -> String {
+private func preprocessInlineStyleTags(_ text: String) -> String {
     text
         .replacingOccurrences(of: "<u>", with: String(underlineStartMarker), options: .caseInsensitive)
         .replacingOccurrences(of: "</u>", with: String(underlineEndMarker), options: .caseInsensitive)
+        .replacingOccurrences(of: "<sup>", with: String(superscriptStartMarker), options: .caseInsensitive)
+        .replacingOccurrences(of: "</sup>", with: String(superscriptEndMarker), options: .caseInsensitive)
+        .replacingOccurrences(of: "<sub>", with: String(subscriptStartMarker), options: .caseInsensitive)
+        .replacingOccurrences(of: "</sub>", with: String(subscriptEndMarker), options: .caseInsensitive)
 }
 
-/// Turns each sentinel-marker pair left by `preprocessUnderline` back into a real underline
-/// on the text between them, then removes the markers. Only matches pairs within the same
-/// block (a `<u>` spanning multiple paragraphs/list items won't underline) — an accepted
-/// limitation given how rarely that's intentional.
-private func applyUnderlineMarkers(_ input: AttributedString) -> AttributedString {
+/// Finds each `start`/`end` sentinel pair left by `preprocessInlineStyleTags`, removes the
+/// sentinels, and lets `style` attribute the text that was between them. Only matches pairs
+/// within the same block (a tag spanning multiple paragraphs/list items won't style) — an
+/// accepted limitation given how rarely that's intentional.
+private func applyMarkerPairs(
+    _ input: AttributedString,
+    start: Character,
+    end: Character,
+    style: (inout AttributedString, Range<AttributedString.Index>) -> Void
+) -> AttributedString {
     var result = input
-    while let start = result.characters.firstIndex(of: underlineStartMarker) {
-        result.characters.remove(at: start)
-        guard let end = result.characters[start...].firstIndex(of: underlineEndMarker) else { continue }
-        result.characters.remove(at: end)
-        result[start..<end].underlineStyle = .single
+    while let startIndex = result.characters.firstIndex(of: start) {
+        result.characters.remove(at: startIndex)
+        guard let endIndex = result.characters[startIndex...].firstIndex(of: end) else { continue }
+        result.characters.remove(at: endIndex)
+        style(&result, startIndex..<endIndex)
+    }
+    return result
+}
+
+private func applyInlineStyleMarkers(_ input: AttributedString) -> AttributedString {
+    var result = input
+    result = applyMarkerPairs(result, start: underlineStartMarker, end: underlineEndMarker) { text, range in
+        text[range].underlineStyle = .single
+    }
+    result = applyMarkerPairs(result, start: superscriptStartMarker, end: superscriptEndMarker) { text, range in
+        text[range].baselineOffset = 6
+        text[range].font = .system(size: 10)
+    }
+    result = applyMarkerPairs(result, start: subscriptStartMarker, end: subscriptEndMarker) { text, range in
+        text[range].baselineOffset = -3
+        text[range].font = .system(size: 10)
     }
     return result
 }
 
 private func markdownBlocks(from text: String) -> [MarkdownBlock] {
-    let preprocessed = preprocessUnderline(
+    let preprocessed = preprocessInlineStyleTags(
         text
             .replacingOccurrences(of: "- [ ] ", with: "☐ ")
             .replacingOccurrences(of: "- [x] ", with: "☑ ")
@@ -156,7 +192,7 @@ private func markdownBlocks(from text: String) -> [MarkdownBlock] {
         markdown: preprocessed,
         options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
     ) else {
-        return [MarkdownBlock(id: 0, kind: .paragraph, text: applyUnderlineMarkers(AttributedString(preprocessed)))]
+        return [MarkdownBlock(id: 0, kind: .paragraph, text: applyInlineStyleMarkers(AttributedString(preprocessed)))]
     }
 
     var blocks: [MarkdownBlock] = []
@@ -173,7 +209,7 @@ private func markdownBlocks(from text: String) -> [MarkdownBlock] {
 
     func flush() {
         guard currentIdentity != nil else { return }
-        blocks.append(MarkdownBlock(id: blocks.count, kind: markdownBlockKind(for: currentComponents), text: applyUnderlineMarkers(currentText)))
+        blocks.append(MarkdownBlock(id: blocks.count, kind: markdownBlockKind(for: currentComponents), text: applyInlineStyleMarkers(currentText)))
         currentText = AttributedString()
         currentIdentity = nil
     }
@@ -181,9 +217,9 @@ private func markdownBlocks(from text: String) -> [MarkdownBlock] {
     func flushTable() {
         guard tableIdentity != nil else { return }
         let columnCount = tableColumns.count
-        let header = (0..<columnCount).map { applyUnderlineMarkers(tableHeaderCells[$0] ?? AttributedString()) }
+        let header = (0..<columnCount).map { applyInlineStyleMarkers(tableHeaderCells[$0] ?? AttributedString()) }
         let rows = tableRows.keys.sorted().map { rowIndex in
-            (0..<columnCount).map { column in applyUnderlineMarkers(tableRows[rowIndex]?[column] ?? AttributedString()) }
+            (0..<columnCount).map { column in applyInlineStyleMarkers(tableRows[rowIndex]?[column] ?? AttributedString()) }
         }
         blocks.append(MarkdownBlock(id: blocks.count, kind: .table(columns: tableColumns, header: header, rows: rows), text: AttributedString()))
         tableIdentity = nil
