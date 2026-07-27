@@ -19,9 +19,17 @@ struct EditorView: View {
     @State private var codeBlockResults: [String: CodeBlockResult] = [:]
     @State private var plateMapResults: [String: PlateMapInstance] = [:]
     @State private var gelMapResults: [String: GelMapInstance] = [:]
-    @State private var showingGelImagePicker = false
-    @State private var showingImagePicker = false
     @StateObject private var controller = EditorController()
+
+    /// Which "pick an image" action is pending. A single `.fileImporter` driven by this
+    /// (rather than two separate `showingXPicker` booleans, each with its own `.fileImporter`)
+    /// — SwiftUI only reliably supports one such modal-presentation modifier per view; a
+    /// second one stacked alongside it can silently stop the first from working.
+    private enum ImagePickerTarget {
+        case gelMap
+        case inlineImage
+    }
+    @State private var imagePickerTarget: ImagePickerTarget?
 
     private var currentNote: Note? {
         store.notes.first(where: { $0.id == noteID })
@@ -124,8 +132,8 @@ struct EditorView: View {
                     plateMapTemplates: store.plateMapTemplates,
                     specialCharacters: shortcuts.shortcuts,
                     onInsertPlateMap: insertPlateMap,
-                    onInsertGelMap: { showingGelImagePicker = true },
-                    onInsertImage: { showingImagePicker = true }
+                    onInsertGelMap: { imagePickerTarget = .gelMap },
+                    onInsertImage: { imagePickerTarget = .inlineImage }
                 )
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
@@ -188,14 +196,20 @@ struct EditorView: View {
         .background(theme.editorBackground)
         .onAppear(perform: loadFromNote)
         .onChange(of: store.undoTick) { _ in loadFromNote() }
-        .fileImporter(isPresented: $showingGelImagePicker, allowedContentTypes: [.image]) { result in
-            if case .success(let url) = result {
-                insertGelMap(from: url)
-            }
-        }
-        .fileImporter(isPresented: $showingImagePicker, allowedContentTypes: [.image]) { result in
-            if case .success(let url) = result {
-                insertImage(from: url)
+        .fileImporter(
+            isPresented: Binding(
+                get: { imagePickerTarget != nil },
+                set: { isPresented in if !isPresented { imagePickerTarget = nil } }
+            ),
+            allowedContentTypes: [.image]
+        ) { result in
+            let target = imagePickerTarget
+            imagePickerTarget = nil
+            guard case .success(let url) = result else { return }
+            switch target {
+            case .gelMap: insertGelMap(from: url)
+            case .inlineImage: insertImage(from: url)
+            case nil: break
             }
         }
         .sheet(isPresented: $showingEnvironmentManager) {
