@@ -10,7 +10,6 @@ struct ProtocolListView: View {
     @State private var mergeContext: MergeContext?
     @State private var importErrorMessage: String?
     @State private var infoBanner: String?
-    @State private var protocolPendingDeletion: LabProtocol?
 
     private struct MergeContext: Identifiable {
         let id: UUID
@@ -101,7 +100,7 @@ struct ProtocolListView: View {
                             .listRowBackground(Color.clear)
                             .contextMenu {
                                 Button(role: .destructive) {
-                                    protocolPendingDeletion = protocolItem
+                                    presentDeleteConfirmation(for: protocolItem)
                                 } label: {
                                     Label("Delete Protocol…", systemImage: "trash")
                                 }
@@ -137,21 +136,27 @@ struct ProtocolListView: View {
         } message: {
             Text(importErrorMessage ?? "")
         }
-        .alert(item: $protocolPendingDeletion) { protocolItem in
-            Alert(
-                title: Text("Delete \"\(protocolItem.name.isEmpty ? "Untitled Protocol" : protocolItem.name)\"?"),
-                message: Text(protocolItem.versions.isEmpty
-                    ? "You can undo this with ⌘Z."
-                    : "This will also delete all \(protocolItem.versions.count) saved version\(protocolItem.versions.count == 1 ? "" : "s"). You can undo this with ⌘Z."),
-                primaryButton: .destructive(Text("Delete")) {
-                    if selectedProtocolID == protocolItem.id {
-                        selectedProtocolID = nil
-                    }
-                    store.deleteProtocol(protocolItem)
-                },
-                secondaryButton: .cancel()
-            )
+    }
+
+    // NSAlert instead of SwiftUI's .alert(item:): a confirmation triggered from inside a
+    // .contextMenu action doesn't reliably present as a SwiftUI alert on macOS — the menu's
+    // own dismissal races with the alert's presentation. Driving it through AppKit directly
+    // sidesteps that (see the identical fix in SidebarView.swift and NoteListView.swift).
+    private func presentDeleteConfirmation(for protocolItem: LabProtocol) {
+        let alert = NSAlert()
+        alert.messageText = "Delete \"\(protocolItem.name.isEmpty ? "Untitled Protocol" : protocolItem.name)\"?"
+        alert.informativeText = protocolItem.versions.isEmpty
+            ? "You can undo this with ⌘Z."
+            : "This will also delete all \(protocolItem.versions.count) saved version\(protocolItem.versions.count == 1 ? "" : "s"). You can undo this with ⌘Z."
+        alert.alertStyle = .warning
+        let deleteButton = alert.addButton(withTitle: "Delete")
+        deleteButton.hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        if selectedProtocolID == protocolItem.id {
+            selectedProtocolID = nil
         }
+        store.deleteProtocol(protocolItem)
     }
 
     private func createProtocol() {

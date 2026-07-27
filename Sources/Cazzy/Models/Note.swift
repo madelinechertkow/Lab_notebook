@@ -113,6 +113,10 @@ struct Note: Identifiable, Codable, Equatable {
     var tags: [String] = []
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
+    /// Determines display order (descending — highest first). Defaults to createdAt so
+    /// notes are chronological (newest first) until manually dragged; editing a note never
+    /// touches this, only a drag does, so entries don't reshuffle every time you save.
+    var sortIndex: Double = Date().timeIntervalSinceReferenceDate
     /// nil means this note has no executable code blocks.
     var executionLanguage: ExecutionLanguage? = nil
     /// References a `CodeEnvironment` in the library (not a copy) — renaming/fixing an
@@ -131,7 +135,7 @@ struct Note: Identifiable, Codable, Equatable {
     var isArchived: Bool = false
 
     enum CodingKeys: String, CodingKey {
-        case id, notebookID, title, content, tags, createdAt, updatedAt, executionLanguage, codeEnvironmentID, codeBlockResults, plateMapResults, gelMapResults, isArchived
+        case id, notebookID, title, content, tags, createdAt, updatedAt, sortIndex, executionLanguage, codeEnvironmentID, codeBlockResults, plateMapResults, gelMapResults, isArchived
     }
 
     init(
@@ -142,6 +146,7 @@ struct Note: Identifiable, Codable, Equatable {
         tags: [String] = [],
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
+        sortIndex: Double? = nil,
         executionLanguage: ExecutionLanguage? = nil,
         codeEnvironmentID: UUID? = nil,
         codeBlockResults: [String: CodeBlockResult] = [:],
@@ -156,6 +161,7 @@ struct Note: Identifiable, Codable, Equatable {
         self.tags = tags
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.sortIndex = sortIndex ?? createdAt.timeIntervalSinceReferenceDate
         self.executionLanguage = executionLanguage
         self.codeEnvironmentID = codeEnvironmentID
         self.codeBlockResults = codeBlockResults
@@ -173,6 +179,7 @@ struct Note: Identifiable, Codable, Equatable {
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+        sortIndex = try container.decodeIfPresent(Double.self, forKey: .sortIndex) ?? createdAt.timeIntervalSinceReferenceDate
         executionLanguage = try container.decodeIfPresent(ExecutionLanguage.self, forKey: .executionLanguage)
         codeEnvironmentID = try container.decodeIfPresent(UUID.self, forKey: .codeEnvironmentID)
         codeBlockResults = try container.decodeIfPresent([String: CodeBlockResult].self, forKey: .codeBlockResults) ?? [:]

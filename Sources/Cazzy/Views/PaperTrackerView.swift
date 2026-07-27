@@ -15,7 +15,6 @@ struct PaperTrackerView: View {
     @State private var followUpOnly: Bool = false
     @State private var selection: PaperEntry.ID?
     @State private var detailTarget: DetailTarget?
-    @State private var entryPendingDeletion: PaperEntry?
 
     private struct DetailTarget: Identifiable { let id: UUID }
 
@@ -67,16 +66,24 @@ struct PaperTrackerView: View {
         .sheet(item: $detailTarget) { target in
             PaperDetailSheet(entryID: target.id)
         }
-        .alert(item: $entryPendingDeletion) { entry in
-            Alert(
-                title: Text("Delete \"\(entry.title.isEmpty ? "Untitled Paper" : entry.title)\"?"),
-                message: Text("You can undo this with ⌘Z."),
-                primaryButton: .destructive(Text("Delete")) {
-                    store.deletePaperEntry(entry)
-                },
-                secondaryButton: .cancel()
-            )
-        }
+    }
+
+    // NSAlert instead of SwiftUI's .alert(item:): a confirmation triggered from inside a
+    // .contextMenu action doesn't reliably present as a SwiftUI alert on macOS — the menu's
+    // own dismissal races with the alert's presentation. Driving it through AppKit directly
+    // sidesteps that (see the identical fix in SidebarView.swift, NoteListView.swift, and
+    // ProtocolListView.swift). Used uniformly here (not just the context-menu path) so the
+    // toolbar button, right-click menu, and Delete key all share one confirmation.
+    private func presentDeleteConfirmation(for entry: PaperEntry) {
+        let alert = NSAlert()
+        alert.messageText = "Delete \"\(entry.title.isEmpty ? "Untitled Paper" : entry.title)\"?"
+        alert.informativeText = "You can undo this with ⌘Z."
+        alert.alertStyle = .warning
+        let deleteButton = alert.addButton(withTitle: "Delete")
+        deleteButton.hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        store.deletePaperEntry(entry)
     }
 
     private var header: some View {
@@ -241,7 +248,7 @@ struct PaperTrackerView: View {
                     .help("Methods, summary, notes…")
 
                     Button {
-                        entryPendingDeletion = entry
+                        presentDeleteConfirmation(for: entry)
                     } label: {
                         Image(systemName: "trash")
                     }
@@ -256,7 +263,7 @@ struct PaperTrackerView: View {
         .contextMenu(forSelectionType: PaperEntry.ID.self) { selectedIDs in
             if let id = selectedIDs.first, let entry = store.paperEntries.first(where: { $0.id == id }) {
                 Button(role: .destructive) {
-                    entryPendingDeletion = entry
+                    presentDeleteConfirmation(for: entry)
                 } label: {
                     Label("Delete Row…", systemImage: "trash")
                 }
@@ -264,7 +271,7 @@ struct PaperTrackerView: View {
         }
         .onDeleteCommand {
             guard let id = selection, let entry = store.paperEntries.first(where: { $0.id == id }) else { return }
-            entryPendingDeletion = entry
+            presentDeleteConfirmation(for: entry)
         }
     }
 

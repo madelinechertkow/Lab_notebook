@@ -127,6 +127,21 @@ final class NoteStore: ObservableObject {
         return notebook
     }
 
+    /// Reorders notebooks by drag-and-drop in the sidebar. The offsets are relative to
+    /// visibleNotebooks() (what's actually shown), so this reorders that subsequence
+    /// in place within the full notebooks array — archived/other-lab-mode notebooks
+    /// interleaved in between keep their existing positions.
+    func moveNotebooks(fromVisibleOffsets source: IndexSet, toVisibleOffset destination: Int) {
+        var visible = visibleNotebooks()
+        visible.move(fromOffsets: source, toOffset: destination)
+        var reordered = visible.makeIterator()
+        let visibleIDs = Set(visible.map { $0.id })
+        notebooks = notebooks.map { notebook in
+            visibleIDs.contains(notebook.id) ? (reordered.next() ?? notebook) : notebook
+        }
+        save()
+    }
+
     private struct SavedData: Codable, Equatable {
         var notebooks: [Notebook]
         var notes: [Note]
@@ -290,7 +305,7 @@ final class NoteStore: ObservableObject {
             scoped = notes.filter { visibleIDs.contains($0.notebookID) && !$0.isArchived }
         }
         let filtered = tag.map { t in scoped.filter { $0.tags.contains(t) } } ?? scoped
-        return filtered.sorted { $0.updatedAt > $1.updatedAt }
+        return filtered.sorted { $0.sortIndex > $1.sortIndex }
     }
 
     /// Archived notes for the same scope as notes(in:tag:) — nil notebookID means "All Notes" scope.
@@ -303,7 +318,7 @@ final class NoteStore: ObservableObject {
             scoped = notes.filter { visibleIDs.contains($0.notebookID) && $0.isArchived }
         }
         let filtered = tag.map { t in scoped.filter { $0.tags.contains(t) } } ?? scoped
-        return filtered.sorted { $0.updatedAt > $1.updatedAt }
+        return filtered.sorted { $0.sortIndex > $1.sortIndex }
     }
 
     func search(_ query: String, in notebookID: UUID?, tag: String? = nil) -> [Note] {
@@ -330,6 +345,37 @@ final class NoteStore: ObservableObject {
         var updated = note
         updated.updatedAt = Date()
         notes[idx] = updated
+        save()
+    }
+
+    /// Reorders notes via List's onMove. `orderedNotes` is the exact on-screen (descending
+    /// sortIndex) list at the moment of the drag; `source`/`destination` use the same
+    /// convention as Array.move(fromOffsets:toOffset:) — what onMove hands back directly.
+    /// Only the dragged note's sortIndex changes, to a fractional value squeezed between its
+    /// new neighbors, so a drag never disturbs any other note's position, including ones
+    /// outside the current notebook/tag/search scope it happened in.
+    func moveNote(fromOffsets source: IndexSet, toOffset destination: Int, in orderedNotes: [Note]) {
+        guard let fromIndex = source.first,
+              orderedNotes.indices.contains(fromIndex),
+              let noteIndex = notes.firstIndex(where: { $0.id == orderedNotes[fromIndex].id })
+        else { return }
+
+        var display = orderedNotes
+        display.move(fromOffsets: source, toOffset: destination)
+
+        guard let newIndex = display.firstIndex(where: { $0.id == orderedNotes[fromIndex].id }) else { return }
+        let before = newIndex > 0 ? display[newIndex - 1].sortIndex : nil
+        let after = newIndex < display.count - 1 ? display[newIndex + 1].sortIndex : nil
+
+        let newSortIndex: Double
+        switch (before, after) {
+        case let (b?, a?): newSortIndex = (b + a) / 2
+        case let (b?, nil): newSortIndex = b - 1
+        case let (nil, a?): newSortIndex = a + 1
+        case (nil, nil): return
+        }
+
+        notes[noteIndex].sortIndex = newSortIndex
         save()
     }
 

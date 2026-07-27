@@ -188,6 +188,9 @@ struct SidebarView: View {
                         }
                     }
                 }
+                .onMove { source, destination in
+                    store.moveNotebooks(fromVisibleOffsets: source, toVisibleOffset: destination)
+                }
             } header: {
                 HStack {
                     Text("Notebooks")

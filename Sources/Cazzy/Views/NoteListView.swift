@@ -19,9 +19,7 @@ struct NoteListView: View {
     var sidebarSelection: SidebarItem?
     @Binding var selectedNoteID: UUID?
     @State private var searchText: String = ""
-    @State private var notePendingDeletion: Note?
     @State private var contentTab: NotebookContentTab = .notes
-    @State private var filePendingRemoval: LinkedFile?
     @State private var relinkTarget: LinkedFile?
     @State private var isDropTargeting: Bool = false
 
@@ -120,28 +118,36 @@ struct NoteListView: View {
             }
         }
         .background(theme.background)
-        .alert(item: $notePendingDeletion) { note in
-            Alert(
-                title: Text("Delete \"\(note.title.isEmpty ? "Untitled" : note.title)\"?"),
-                message: Text("You can undo this with ⌘Z."),
-                primaryButton: .destructive(Text("Delete")) {
-                    let wasSelected = selectedNoteID == note.id
-                    store.deleteNote(note)
-                    if wasSelected { selectedNoteID = nil }
-                },
-                secondaryButton: .cancel()
-            )
-        }
-        .alert(item: $filePendingRemoval) { file in
-            Alert(
-                title: Text("Remove Link to \"\(file.fileName)\"?"),
-                message: Text("This only removes it from the notebook — the original file on disk is untouched."),
-                primaryButton: .destructive(Text("Remove")) {
-                    store.removeLinkedFile(file)
-                },
-                secondaryButton: .cancel()
-            )
-        }
+    }
+
+    // NSAlert instead of SwiftUI's .alert(item:): a confirmation triggered from inside a
+    // .contextMenu action doesn't reliably present as a SwiftUI alert on macOS — the menu's
+    // own dismissal races with the alert's presentation. Driving it through AppKit directly
+    // sidesteps that (see the identical fix for notebook delete in SidebarView.swift).
+    private func presentDeleteConfirmation(for note: Note, permanently: Bool) {
+        let alert = NSAlert()
+        alert.messageText = "\(permanently ? "Permanently delete" : "Delete") \"\(note.title.isEmpty ? "Untitled" : note.title)\"?"
+        alert.informativeText = "You can undo this with ⌘Z."
+        alert.alertStyle = .warning
+        let deleteButton = alert.addButton(withTitle: "Delete")
+        deleteButton.hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let wasSelected = selectedNoteID == note.id
+        store.deleteNote(note)
+        if wasSelected { selectedNoteID = nil }
+    }
+
+    private func presentRemoveLinkConfirmation(for file: LinkedFile) {
+        let alert = NSAlert()
+        alert.messageText = "Remove Link to \"\(file.fileName)\"?"
+        alert.informativeText = "This only removes it from the notebook — the original file on disk is untouched."
+        alert.alertStyle = .warning
+        let removeButton = alert.addButton(withTitle: "Remove")
+        removeButton.hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        store.removeLinkedFile(file)
     }
 
     @ViewBuilder
@@ -160,7 +166,8 @@ struct NoteListView: View {
         } else {
             List(selection: $selectedNoteID) {
                 if !notes.isEmpty {
-                    ForEach(notes) { note in
+                    let orderedNotes = notes
+                    ForEach(orderedNotes) { note in
                         NoteRow(note: note)
                             .tag(note.id)
                             .listRowSeparator(.hidden)
@@ -172,11 +179,14 @@ struct NoteListView: View {
                                     Label("Archive Note", systemImage: "archivebox")
                                 }
                                 Button(role: .destructive) {
-                                    notePendingDeletion = note
+                                    presentDeleteConfirmation(for: note, permanently: false)
                                 } label: {
                                     Label("Delete Note…", systemImage: "trash")
                                 }
                             }
+                    }
+                    .onMove { source, destination in
+                        store.moveNote(fromOffsets: source, toOffset: destination, in: orderedNotes)
                     }
                     .onDelete(perform: deleteNotes)
                 }
@@ -196,7 +206,7 @@ struct NoteListView: View {
                                         Label("Unarchive", systemImage: "arrow.uturn.backward")
                                     }
                                     Button(role: .destructive) {
-                                        notePendingDeletion = note
+                                        presentDeleteConfirmation(for: note, permanently: true)
                                     } label: {
                                         Label("Delete Permanently…", systemImage: "trash")
                                     }
@@ -255,7 +265,7 @@ struct NoteListView: View {
                                     Label("Relink…", systemImage: "link")
                                 }
                                 Button(role: .destructive) {
-                                    filePendingRemoval = file
+                                    presentRemoveLinkConfirmation(for: file)
                                 } label: {
                                     Label("Remove Link…", systemImage: "trash")
                                 }
@@ -366,7 +376,7 @@ struct NoteRow: View {
             }
 
             HStack(spacing: 6) {
-                Text(note.updatedAt.formatted(date: .abbreviated, time: .omitted))
+                Text(note.createdAt.formatted(date: .abbreviated, time: .omitted))
                     .font(theme.bodyFont(10))
                     .foregroundStyle(theme.textTertiary)
                 ForEach(note.tags.prefix(2), id: \.self) { tag in
