@@ -9,14 +9,11 @@ import AppKit
 struct PaperTrackerView: View {
     @EnvironmentObject var store: NoteStore
     @EnvironmentObject var theme: ThemeStore
+    @Binding var selectedEntryID: PaperEntry.ID?
 
     @State private var searchText: String = ""
     @State private var readStatusFilter: PaperReadStatus?
     @State private var followUpOnly: Bool = false
-    @State private var selection: PaperEntry.ID?
-    @State private var detailTarget: DetailTarget?
-
-    private struct DetailTarget: Identifiable { let id: UUID }
 
     private var filteredEntries: [PaperEntry] {
         var base = store.paperEntries
@@ -63,9 +60,6 @@ struct PaperTrackerView: View {
             }
         }
         .background(theme.background)
-        .sheet(item: $detailTarget) { target in
-            PaperDetailSheet(entryID: target.id)
-        }
     }
 
     // NSAlert instead of SwiftUI's .alert(item:): a confirmation triggered from inside a
@@ -146,7 +140,7 @@ struct PaperTrackerView: View {
     /// related fields (First/Last author, Relevance/Follow-up) are paired into one
     /// column each — still independently editable, just stacked vertically.
     private var table: some View {
-        Table(filteredEntries, selection: $selection) {
+        Table(filteredEntries, selection: $selectedEntryID) {
             TableColumn("Added") { entry in
                 DatePicker("", selection: dateBinding(for: entry, \.dateAdded), displayedComponents: .date)
                     .labelsHidden()
@@ -229,7 +223,7 @@ struct PaperTrackerView: View {
             TableColumn("Actions") { entry in
                 HStack(spacing: 10) {
                     Button {
-                        openLink(for: entry)
+                        openLink(entry.link)
                     } label: {
                         Image(systemName: "link")
                     }
@@ -239,13 +233,13 @@ struct PaperTrackerView: View {
                     .help(entry.link.isEmpty ? "No link saved" : entry.link)
 
                     Button {
-                        detailTarget = DetailTarget(id: entry.id)
+                        selectedEntryID = entry.id
                     } label: {
                         Image(systemName: "text.justify")
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(theme.textSecondary)
-                    .help("Methods, summary, notes…")
+                    .help("View full summary")
 
                     Button {
                         presentDeleteConfirmation(for: entry)
@@ -270,24 +264,14 @@ struct PaperTrackerView: View {
             }
         }
         .onDeleteCommand {
-            guard let id = selection, let entry = store.paperEntries.first(where: { $0.id == id }) else { return }
+            guard let id = selectedEntryID, let entry = store.paperEntries.first(where: { $0.id == id }) else { return }
             presentDeleteConfirmation(for: entry)
         }
     }
 
     private func addEntry() {
         let entry = store.createPaperEntry()
-        detailTarget = DetailTarget(id: entry.id)
-    }
-
-    private func openLink(for entry: PaperEntry) {
-        guard !entry.link.isEmpty else { return }
-        var raw = entry.link.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !raw.lowercased().hasPrefix("http://") && !raw.lowercased().hasPrefix("https://") {
-            raw = "https://" + raw
-        }
-        guard let url = URL(string: raw) else { return }
-        NSWorkspace.shared.open(url)
+        selectedEntryID = entry.id
     }
 
     // MARK: - Bindings (looked up by id so edits always target the current store state)
@@ -363,16 +347,18 @@ struct PaperTrackerView: View {
     }
 }
 
-/// Per-row drawer for the long free-text fields that don't work well as always-visible
-/// spreadsheet columns, plus the fields (Date Published, Link/DOI, Project Notes) that
-/// are useful to edit with room to breathe. Reads/writes the store live by id, so it
-/// stays correct even if the row is edited from the table underneath at the same time.
-private struct PaperDetailSheet: View {
+/// Right-panel summary for a paper — shown in the detail column whenever a row is selected
+/// or added, covering every field from the original Paper_Tracker.xlsx (identification
+/// through citation) in one place instead of only the handful exposed as table columns.
+/// Reads/writes the store live by id, so it stays correct even if the row is edited from
+/// the table underneath at the same time.
+struct PaperDetailPanel: View {
     @EnvironmentObject var store: NoteStore
     @EnvironmentObject var theme: ThemeStore
-    @Environment(\.dismiss) private var dismiss
     let entryID: UUID
     @State private var newTag: String = ""
+    @State private var isFetchingMetadata = false
+    @State private var fetchErrorMessage: String?
 
     private var entry: PaperEntry {
         store.paperEntries.first(where: { $0.id == entryID }) ?? PaperEntry(id: entryID)
@@ -387,24 +373,14 @@ private struct PaperDetailSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text(entry.title.isEmpty ? "Untitled Paper" : entry.title)
-                    .font(theme.displayFont(16))
-                    .foregroundStyle(theme.textPrimary)
-                    .lineLimit(2)
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding(16)
-
+            header
             Divider().overlay(theme.divider)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     section("Identification") {
                         labeledField("Date Published", text: entryBinding.datePublished, placeholder: "e.g. May, 2026")
-                        labeledField("Link / DOI", text: entryBinding.link, placeholder: "https://…")
+                        linkFieldWithFetch
                     }
 
                     section("Methods & Data") {
@@ -442,11 +418,11 @@ private struct PaperDetailSheet: View {
 
                     section("Citation") {
                         HStack(alignment: .top) {
-                            Text("IEEE Citation")
+                            Text("Nature Citation")
                                 .font(theme.bodyFont(11, weight: .medium))
                                 .foregroundStyle(theme.textSecondary)
                                 .frame(width: 130, alignment: .leading)
-                            Text(entry.ieeeCitation.isEmpty ? "Fill in First Author to generate a citation." : entry.ieeeCitation)
+                            Text(entry.natureCitation.isEmpty ? "Fill in First Author to generate a citation." : entry.natureCitation)
                                 .font(theme.bodyFont(12))
                                 .foregroundStyle(theme.textPrimary)
                                 .textSelection(.enabled)
@@ -456,8 +432,134 @@ private struct PaperDetailSheet: View {
                 .padding(20)
             }
         }
-        .frame(width: 520, height: 560)
-        .background(theme.background)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(theme.editorBackground)
+    }
+
+    /// Title, authors, journal, and year up top — the fields the original detail sheet left
+    /// out entirely, forcing you back to the (narrow) table columns to see or set them.
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("Untitled Paper", text: entryBinding.title)
+                .textFieldStyle(.plain)
+                .font(theme.displayFont(18))
+                .foregroundStyle(theme.textPrimary)
+                .lineLimit(2)
+
+            HStack(spacing: 6) {
+                TextField("First author", text: entryBinding.firstAuthor)
+                    .textFieldStyle(.plain)
+                Text("&")
+                    .foregroundStyle(theme.textTertiary)
+                TextField("Last author", text: entryBinding.lastAuthor)
+                    .textFieldStyle(.plain)
+            }
+            .font(theme.bodyFont(13))
+            .foregroundStyle(theme.textSecondary)
+
+            HStack(spacing: 8) {
+                TextField("Journal", text: entryBinding.journal)
+                    .textFieldStyle(.plain)
+                    .italic()
+                Text("·").foregroundStyle(theme.textTertiary)
+                TextField("Year", text: entryBinding.year)
+                    .textFieldStyle(.plain)
+                    .frame(width: 46)
+                if !entry.link.isEmpty {
+                    Spacer()
+                    Button {
+                        openLink(entry.link)
+                    } label: {
+                        Image(systemName: "link")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.accentDeep)
+                    .help(entry.link)
+                }
+            }
+            .font(theme.bodyFont(12, weight: .medium))
+            .foregroundStyle(theme.textSecondary)
+
+            HStack(spacing: 12) {
+                Picker("", selection: entryBinding.readStatus) {
+                    ForEach(PaperReadStatus.allCases) { status in
+                        Text(status.rawValue).tag(status)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
+
+                Picker("", selection: entryBinding.relevance) {
+                    Text("Relevance —").tag(PaperRelevance?.none)
+                    ForEach(PaperRelevance.allCases) { level in
+                        Text(level.rawValue).tag(PaperRelevance?.some(level))
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
+
+                Toggle("Follow-up", isOn: entryBinding.followUpNeeded)
+                    .toggleStyle(.checkbox)
+            }
+            .font(theme.bodyFont(11))
+        }
+        .padding(16)
+    }
+
+    private var linkFieldWithFetch: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Link / DOI")
+                    .font(theme.bodyFont(11, weight: .medium))
+                    .foregroundStyle(theme.textSecondary)
+                    .frame(width: 130, alignment: .leading)
+                TextField("https://doi.org/…", text: entryBinding.link)
+                    .textFieldStyle(.roundedBorder)
+                    .font(theme.bodyFont(12))
+                Button(action: fetchMetadata) {
+                    if isFetchingMetadata {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Label("Fetch", systemImage: "arrow.down.doc")
+                    }
+                }
+                .disabled(entry.link.trimmingCharacters(in: .whitespaces).isEmpty || isFetchingMetadata)
+                .help("Fill in title, authors, journal, and year from this link")
+            }
+            if let fetchErrorMessage {
+                Text(fetchErrorMessage)
+                    .font(theme.bodyFont(10))
+                    .foregroundStyle(.red)
+                    .padding(.leading, 138)
+            }
+        }
+    }
+
+    private func fetchMetadata() {
+        let link = entry.link
+        let targetID = entryID
+        isFetchingMetadata = true
+        fetchErrorMessage = nil
+        Task {
+            do {
+                let metadata = try await PaperMetadataFetcher.fetchMetadata(fromLink: link)
+                guard var updated = store.paperEntries.first(where: { $0.id == targetID }) else { return }
+                if let title = metadata.title { updated.title = title }
+                if let journal = metadata.journal { updated.journal = journal }
+                if let year = metadata.year { updated.year = year }
+                if let datePublished = metadata.datePublished { updated.datePublished = datePublished }
+                if let firstAuthor = metadata.firstAuthor { updated.firstAuthor = firstAuthor }
+                if let lastAuthor = metadata.lastAuthor { updated.lastAuthor = lastAuthor }
+                store.updatePaperEntry(updated)
+                isFetchingMetadata = false
+            } catch {
+                fetchErrorMessage = (error as? PaperMetadataError)?.errorDescription ?? "Couldn't fetch details from that link."
+                isFetchingMetadata = false
+            }
+        }
     }
 
     @ViewBuilder
@@ -497,4 +599,15 @@ private struct PaperDetailSheet: View {
                 .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(theme.cardBackground.opacity(0.6)))
         }
     }
+}
+
+/// Shared by the table's link button and the detail panel's header link button.
+private func openLink(_ rawLink: String) {
+    guard !rawLink.isEmpty else { return }
+    var raw = rawLink.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !raw.lowercased().hasPrefix("http://") && !raw.lowercased().hasPrefix("https://") {
+        raw = "https://" + raw
+    }
+    guard let url = URL(string: raw) else { return }
+    NSWorkspace.shared.open(url)
 }

@@ -160,15 +160,29 @@ struct PaperEntry: Identifiable, Codable, Equatable {
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
     }
 
-    /// Mirrors the "IEEE Citation" formula column: FirstAuthor and LastAuthor, Title Journal (Year) Link.
-    var ieeeCitation: String {
+    /// Approximates Nature's reference style — "Author, A. & Author, B. Title. Journal (Year)."
+    /// Author fields are used as entered (or already "Surname, Initials" formatted when filled
+    /// in via PaperMetadataFetcher); volume/page numbers aren't tracked so they're simply
+    /// omitted rather than guessed.
+    var natureCitation: String {
         guard !firstAuthor.isEmpty else { return "" }
-        var result = firstAuthor
-        if !lastAuthor.isEmpty { result += " and \(lastAuthor)" }
-        if !title.isEmpty { result += ", \(title)" }
-        if !journal.isEmpty { result += " \(journal)" }
-        if !year.isEmpty { result += " (\(year))" }
-        result += !link.isEmpty ? " \(link)" : "."
-        return result
+        var authors = firstAuthor
+        if !lastAuthor.isEmpty { authors += " & \(lastAuthor)" }
+
+        var parts: [String] = [authors]
+        if !title.isEmpty {
+            parts.append(title.hasSuffix(".") ? title : "\(title).")
+        }
+        if !journal.isEmpty || !year.isEmpty {
+            var journalYear = journal
+            if !year.isEmpty {
+                journalYear += journalYear.isEmpty ? "(\(year))" : " (\(year))"
+            }
+            parts.append(journalYear)
+        }
+
+        var citation = parts.joined(separator: " ")
+        if !citation.hasSuffix(".") { citation += "." }
+        return citation
     }
 }

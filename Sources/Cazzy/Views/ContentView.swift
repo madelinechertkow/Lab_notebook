@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var selectedProtocolID: UUID?
     @State private var selectedPlateMapID: UUID?
     @State private var selectedLadderID: UUID?
+    @State private var selectedPaperEntryID: PaperEntry.ID?
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
@@ -25,8 +26,8 @@ struct ContentView: View {
                 GelLadderListView(selectedLadderID: $selectedLadderID)
                     .navigationSplitViewColumnWidth(min: 260, ideal: 300)
             } else if sidebarSelection == .paperTracker {
-                PaperTrackerView()
-                    .navigationSplitViewColumnWidth(min: 700, ideal: 1000)
+                PaperTrackerView(selectedEntryID: $selectedPaperEntryID)
+                    .navigationSplitViewColumnWidth(min: 700, ideal: 900)
             } else {
                 NoteListView(sidebarSelection: sidebarSelection, selectedNoteID: $selectedNoteID)
                     .navigationSplitViewColumnWidth(min: 260, ideal: 300)
@@ -50,8 +51,24 @@ struct ContentView: View {
                 } else {
                     EmptyStateView()
                 }
+            } else if sidebarSelection == .paperTracker {
+                if let selectedPaperEntryID, store.paperEntries.contains(where: { $0.id == selectedPaperEntryID }) {
+                    // Same fix as EditorView below: force a fresh instance per entry so its
+                    // local @State (newTag, isFetchingMetadata, fetchErrorMessage) can't leak
+                    // from one paper entry into another when switching quickly.
+                    PaperDetailPanel(entryID: selectedPaperEntryID)
+                        .id(selectedPaperEntryID)
+                } else {
+                    EmptyStateView()
+                }
             } else if let selectedNoteID, store.notes.contains(where: { $0.id == selectedNoteID }) {
+                // .id() forces SwiftUI to tear down and recreate EditorView per note, rather
+                // than reusing one instance and patching its @State via onChange(of: noteID) —
+                // under quick switching that patch-in-place reload could lag behind, leaving
+                // the previous note's title/content on screen (and then saving it onto the
+                // newly-selected note when the user kept typing).
                 EditorView(noteID: selectedNoteID)
+                    .id(selectedNoteID)
             } else {
                 EmptyStateView()
             }
@@ -62,6 +79,7 @@ struct ContentView: View {
             selectedProtocolID = nil
             selectedPlateMapID = nil
             selectedLadderID = nil
+            selectedPaperEntryID = nil
             splitViewVisibility = newValue == .paperTracker ? .doubleColumn : .all
         }
         .onChange(of: store.labModeFilter) { _ in

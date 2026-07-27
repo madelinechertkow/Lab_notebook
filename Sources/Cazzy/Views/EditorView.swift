@@ -185,7 +185,6 @@ struct EditorView: View {
         }
         .background(theme.editorBackground)
         .onAppear(perform: loadFromNote)
-        .onChange(of: noteID) { _ in loadFromNote() }
         .onChange(of: store.undoTick) { _ in loadFromNote() }
         .fileImporter(isPresented: $showingGelImagePicker, allowedContentTypes: [.image]) { result in
             if case .success(let url) = result {
