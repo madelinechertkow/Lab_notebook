@@ -4,3 +4,4 @@ build/
 Cazzy.app/
 *.xcodeproj
 .swiftpm/
+*.dmg

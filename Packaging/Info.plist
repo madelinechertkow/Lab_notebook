@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>Cazzy</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.madelinechertkow.cazzy</string>
+    <key>CFBundleName</key>
+    <string>Cazzy</string>
+    <key>CFBundleDisplayName</key>
+    <string>Cazzy</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>Cazzy</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSCalendarsUsageDescription</key>
+    <string>Cazzy checks when you're busy so you can plan experiments in free time slots, and can optionally add scheduled experiments to your calendar.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Cazzy checks when you're busy so you can plan experiments in free time slots, and can optionally add scheduled experiments to your calendar.</string>
+</dict>
+</plist>
