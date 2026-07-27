@@ -10,6 +10,8 @@ final class NoteStore: ObservableObject {
     @Published var plateMapTemplates: [PlateMapTemplate] = []
     @Published var gelLadderPresets: [GelLadderPreset] = []
     @Published var codeEnvironments: [CodeEnvironment] = []
+    @Published var paperEntries: [PaperEntry] = []
+    @Published var linkedFiles: [LinkedFile] = []
     @Published var labModeFilter: LabModeFilter = .all
     /// App-level preference: automatically mirror scheduled experiments to Apple Calendar.
     @Published var syncToAppleCalendar: Bool = false
@@ -111,6 +113,7 @@ final class NoteStore: ObservableObject {
     func deleteNotebook(_ notebook: Notebook) -> Bool {
         guard canDeleteNotebook(notebook) else { return false }
         notes.removeAll { $0.notebookID == notebook.id }
+        linkedFiles.removeAll { $0.notebookID == notebook.id }
         notebooks.removeAll { $0.id == notebook.id }
         save()
         return true
@@ -133,12 +136,14 @@ final class NoteStore: ObservableObject {
         var plateMapTemplates: [PlateMapTemplate]
         var gelLadderPresets: [GelLadderPreset]
         var codeEnvironments: [CodeEnvironment]
+        var paperEntries: [PaperEntry]
+        var linkedFiles: [LinkedFile]
 
         enum CodingKeys: String, CodingKey {
-            case notebooks, notes, todos, protocols, scheduledExperiments, plateMapTemplates, gelLadderPresets, codeEnvironments
+            case notebooks, notes, todos, protocols, scheduledExperiments, plateMapTemplates, gelLadderPresets, codeEnvironments, paperEntries, linkedFiles
         }
 
-        init(notebooks: [Notebook], notes: [Note], todos: [TodoItem], protocols: [LabProtocol], scheduledExperiments: [ScheduledExperiment], plateMapTemplates: [PlateMapTemplate], gelLadderPresets: [GelLadderPreset], codeEnvironments: [CodeEnvironment]) {
+        init(notebooks: [Notebook], notes: [Note], todos: [TodoItem], protocols: [LabProtocol], scheduledExperiments: [ScheduledExperiment], plateMapTemplates: [PlateMapTemplate], gelLadderPresets: [GelLadderPreset], codeEnvironments: [CodeEnvironment], paperEntries: [PaperEntry], linkedFiles: [LinkedFile]) {
             self.notebooks = notebooks
             self.notes = notes
             self.todos = todos
@@ -147,6 +152,8 @@ final class NoteStore: ObservableObject {
             self.plateMapTemplates = plateMapTemplates
             self.gelLadderPresets = gelLadderPresets
             self.codeEnvironments = codeEnvironments
+            self.paperEntries = paperEntries
+            self.linkedFiles = linkedFiles
         }
 
         init(from decoder: Decoder) throws {
@@ -159,6 +166,8 @@ final class NoteStore: ObservableObject {
             plateMapTemplates = try container.decodeIfPresent([PlateMapTemplate].self, forKey: .plateMapTemplates) ?? []
             gelLadderPresets = try container.decodeIfPresent([GelLadderPreset].self, forKey: .gelLadderPresets) ?? []
             codeEnvironments = try container.decodeIfPresent([CodeEnvironment].self, forKey: .codeEnvironments) ?? []
+            paperEntries = try container.decodeIfPresent([PaperEntry].self, forKey: .paperEntries) ?? []
+            linkedFiles = try container.decodeIfPresent([LinkedFile].self, forKey: .linkedFiles) ?? []
         }
     }
 
@@ -188,6 +197,8 @@ final class NoteStore: ObservableObject {
         self.plateMapTemplates = decoded.plateMapTemplates
         self.gelLadderPresets = decoded.gelLadderPresets
         self.codeEnvironments = decoded.codeEnvironments
+        self.paperEntries = decoded.paperEntries
+        self.linkedFiles = decoded.linkedFiles
         self.lastSavedState = decoded
     }
 
@@ -213,7 +224,7 @@ final class NoteStore: ObservableObject {
     }
 
     private func currentState() -> SavedData {
-        SavedData(notebooks: notebooks, notes: notes, todos: todos, protocols: protocols, scheduledExperiments: scheduledExperiments, plateMapTemplates: plateMapTemplates, gelLadderPresets: gelLadderPresets, codeEnvironments: codeEnvironments)
+        SavedData(notebooks: notebooks, notes: notes, todos: todos, protocols: protocols, scheduledExperiments: scheduledExperiments, plateMapTemplates: plateMapTemplates, gelLadderPresets: gelLadderPresets, codeEnvironments: codeEnvironments, paperEntries: paperEntries, linkedFiles: linkedFiles)
     }
 
     private func persist(_ state: SavedData) {
@@ -258,6 +269,8 @@ final class NoteStore: ObservableObject {
         plateMapTemplates = state.plateMapTemplates
         gelLadderPresets = state.gelLadderPresets
         codeEnvironments = state.codeEnvironments
+        paperEntries = state.paperEntries
+        linkedFiles = state.linkedFiles
         // Break the coalescing window so the next edit gets its own undo step.
         lastUndoPushAt = nil
         persist(state)

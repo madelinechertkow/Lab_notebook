@@ -1,4 +1,17 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
+
+private enum NotebookContentTab: String, CaseIterable, Identifiable {
+    case notes, files
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .notes: return "Notes"
+        case .files: return "Files"
+        }
+    }
+}
 
 struct NoteListView: View {
     @EnvironmentObject var store: NoteStore
@@ -7,6 +20,10 @@ struct NoteListView: View {
     @Binding var selectedNoteID: UUID?
     @State private var searchText: String = ""
     @State private var notePendingDeletion: Note?
+    @State private var contentTab: NotebookContentTab = .notes
+    @State private var filePendingRemoval: LinkedFile?
+    @State private var relinkTarget: LinkedFile?
+    @State private var isDropTargeting: Bool = false
 
     private var notebookID: UUID? {
         if case .notebook(let id) = sidebarSelection { return id }
@@ -36,6 +53,8 @@ struct NoteListView: View {
         return "All Notes"
     }
 
+    private var showsFileTab: Bool { notebookID != nil }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -43,97 +62,61 @@ struct NoteListView: View {
                     .font(theme.displayFont(20))
                     .foregroundStyle(theme.textPrimary)
                 Spacer()
-                Button(action: createNote) {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 15))
+                if showsFileTab && contentTab == .files {
+                    Button(action: importFiles) {
+                        Image(systemName: "square.and.arrow.down.on.square")
+                            .font(.system(size: 15))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.accentDeep)
+                    .help("Import a file (Word doc, PDF, etc.) — it stays linked to its original location")
+                } else {
+                    Button(action: createNote) {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: 15))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.accentDeep)
+                    .disabled(store.visibleNotebooks().isEmpty)
+                    .help("New note")
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.accentDeep)
-                .disabled(store.visibleNotebooks().isEmpty)
             }
             .padding(.horizontal, 16)
             .padding(.top, 14)
             .padding(.bottom, 8)
 
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(theme.textSecondary)
-                    .font(.system(size: 12))
-                TextField("Search notes", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .font(theme.bodyFont(13))
+            if showsFileTab {
+                Picker("", selection: $contentTab) {
+                    ForEach(NotebookContentTab.allCases) { tab in
+                        Text(tab.label).tag(tab)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal, 16)
+                .padding(.bottom, 10)
             }
-            .padding(8)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.cardBackground.opacity(0.6)))
-            .padding(.horizontal, 16)
-            .padding(.bottom, 10)
 
-            Divider().overlay(theme.divider)
-
-            if notes.isEmpty && archivedNotes.isEmpty {
-                Spacer()
-                VStack(spacing: 8) {
-                    Image(systemName: "leaf.fill")
-                        .font(.system(size: 26))
-                        .foregroundStyle(theme.textTertiary)
-                    Text("No notes yet")
-                        .font(theme.bodyFont(13))
-                        .foregroundStyle(theme.textSecondary)
-                }
-                Spacer()
+            if contentTab == .files, let notebookID {
+                Divider().overlay(theme.divider)
+                filesList(for: notebookID)
             } else {
-                List(selection: $selectedNoteID) {
-                    if !notes.isEmpty {
-                        ForEach(notes) { note in
-                            NoteRow(note: note)
-                                .tag(note.id)
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
-                                .contextMenu {
-                                    Button {
-                                        store.archiveNote(note)
-                                    } label: {
-                                        Label("Archive Note", systemImage: "archivebox")
-                                    }
-                                    Button(role: .destructive) {
-                                        notePendingDeletion = note
-                                    } label: {
-                                        Label("Delete Note…", systemImage: "trash")
-                                    }
-                                }
-                        }
-                        .onDelete(perform: deleteNotes)
-                    }
-
-                    if !archivedNotes.isEmpty {
-                        Section {
-                            ForEach(archivedNotes) { note in
-                                NoteRow(note: note)
-                                    .tag(note.id)
-                                    .opacity(0.6)
-                                    .listRowSeparator(.hidden)
-                                    .listRowBackground(Color.clear)
-                                    .contextMenu {
-                                        Button {
-                                            store.unarchiveNote(note)
-                                        } label: {
-                                            Label("Unarchive", systemImage: "arrow.uturn.backward")
-                                        }
-                                        Button(role: .destructive) {
-                                            notePendingDeletion = note
-                                        } label: {
-                                            Label("Delete Permanently…", systemImage: "trash")
-                                        }
-                                    }
-                            }
-                        } header: {
-                            Text("Archived")
-                                .foregroundStyle(theme.textSecondary)
-                        }
-                    }
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(theme.textSecondary)
+                        .font(.system(size: 12))
+                    TextField("Search notes", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(theme.bodyFont(13))
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.cardBackground.opacity(0.6)))
+                .padding(.horizontal, 16)
+                .padding(.bottom, 10)
+
+                Divider().overlay(theme.divider)
+
+                notesList
             }
         }
         .background(theme.background)
@@ -149,6 +132,176 @@ struct NoteListView: View {
                 secondaryButton: .cancel()
             )
         }
+        .alert(item: $filePendingRemoval) { file in
+            Alert(
+                title: Text("Remove Link to \"\(file.fileName)\"?"),
+                message: Text("This only removes it from the notebook — the original file on disk is untouched."),
+                primaryButton: .destructive(Text("Remove")) {
+                    store.removeLinkedFile(file)
+                },
+                secondaryButton: .cancel()
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var notesList: some View {
+        if notes.isEmpty && archivedNotes.isEmpty {
+            Spacer()
+            VStack(spacing: 8) {
+                Image(systemName: "leaf.fill")
+                    .font(.system(size: 26))
+                    .foregroundStyle(theme.textTertiary)
+                Text("No notes yet")
+                    .font(theme.bodyFont(13))
+                    .foregroundStyle(theme.textSecondary)
+            }
+            Spacer()
+        } else {
+            List(selection: $selectedNoteID) {
+                if !notes.isEmpty {
+                    ForEach(notes) { note in
+                        NoteRow(note: note)
+                            .tag(note.id)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .contextMenu {
+                                Button {
+                                    store.archiveNote(note)
+                                } label: {
+                                    Label("Archive Note", systemImage: "archivebox")
+                                }
+                                Button(role: .destructive) {
+                                    notePendingDeletion = note
+                                } label: {
+                                    Label("Delete Note…", systemImage: "trash")
+                                }
+                            }
+                    }
+                    .onDelete(perform: deleteNotes)
+                }
+
+                if !archivedNotes.isEmpty {
+                    Section {
+                        ForEach(archivedNotes) { note in
+                            NoteRow(note: note)
+                                .tag(note.id)
+                                .opacity(0.6)
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                                .contextMenu {
+                                    Button {
+                                        store.unarchiveNote(note)
+                                    } label: {
+                                        Label("Unarchive", systemImage: "arrow.uturn.backward")
+                                    }
+                                    Button(role: .destructive) {
+                                        notePendingDeletion = note
+                                    } label: {
+                                        Label("Delete Permanently…", systemImage: "trash")
+                                    }
+                                }
+                        }
+                    } header: {
+                        Text("Archived")
+                            .foregroundStyle(theme.textSecondary)
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+        }
+    }
+
+    @ViewBuilder
+    private func filesList(for notebookID: UUID) -> some View {
+        let files = store.linkedFiles(in: notebookID)
+        ZStack {
+            if files.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "doc.badge.plus")
+                        .font(.system(size: 26))
+                        .foregroundStyle(theme.textTertiary)
+                    Text("No files linked yet")
+                        .font(theme.bodyFont(13))
+                        .foregroundStyle(theme.textSecondary)
+                    Text("Import a Word doc, PDF, or other file — it opens from its original location, so edits made elsewhere are always up to date. You can also drag files in here.")
+                        .font(theme.bodyFont(11))
+                        .foregroundStyle(theme.textTertiary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 220)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(files) { file in
+                        LinkedFileRow(file: file)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .contextMenu {
+                                Button {
+                                    store.openLinkedFile(file)
+                                } label: {
+                                    Label("Open", systemImage: "arrow.up.forward.square")
+                                }
+                                Button {
+                                    store.revealLinkedFileInFinder(file)
+                                } label: {
+                                    Label("Reveal in Finder", systemImage: "folder")
+                                }
+                                Button {
+                                    relink(file)
+                                } label: {
+                                    Label("Relink…", systemImage: "link")
+                                }
+                                Button(role: .destructive) {
+                                    filePendingRemoval = file
+                                } label: {
+                                    Label("Remove Link…", systemImage: "trash")
+                                }
+                            }
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+            }
+
+            if isDropTargeting {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(theme.accentDeep, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.accentDeep.opacity(0.08)))
+                    .padding(8)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onDrop(of: [.fileURL], isTargeted: $isDropTargeting) { providers in
+            handleDrop(providers: providers, notebookID: notebookID)
+        }
+    }
+
+    /// NSItemProvider hands file drops back as either a bridged NSURL or a raw
+    /// plist-encoded Data blob depending on the drag source, so both are decoded here.
+    private func handleDrop(providers: [NSItemProvider], notebookID: UUID) -> Bool {
+        let matching = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }
+        guard !matching.isEmpty else { return false }
+        for provider in matching {
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                let url: URL?
+                switch item {
+                case let u as URL:
+                    url = u
+                case let data as Data:
+                    url = URL(dataRepresentation: data, relativeTo: nil)
+                default:
+                    url = nil
+                }
+                guard let url else { return }
+                DispatchQueue.main.async {
+                    _ = try? store.linkFile(at: url, in: notebookID)
+                }
+            }
+        }
+        return true
     }
 
     private func createNote() {
@@ -161,6 +314,35 @@ struct NoteListView: View {
         let currentNotes = notes
         for index in offsets {
             store.deleteNote(currentNotes[index])
+        }
+    }
+
+    private func importFiles() {
+        guard let notebookID else { return }
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.prompt = "Link"
+        panel.message = "Choose Word documents or other files to link into this notebook."
+        panel.begin { response in
+            guard response == .OK else { return }
+            for url in panel.urls {
+                _ = try? store.linkFile(at: url, in: notebookID)
+            }
+        }
+    }
+
+    private func relink(_ file: LinkedFile) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.prompt = "Relink"
+        panel.message = "Choose the new location of \"\(file.fileName)\"."
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            try? store.relinkFile(file, to: url)
         }
     }
 }
@@ -202,5 +384,67 @@ struct NoteRow: View {
         .softCard(cornerRadius: 12)
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
+    }
+}
+
+/// A row for a `LinkedFile`. Unlike a note, tapping it doesn't select anything in this
+/// app — it opens the real file (Word, Preview, etc.) at its original location, since
+/// the whole point of linking rather than importing is that this app never becomes the
+/// source of truth for the file's content.
+struct LinkedFileRow: View {
+    @EnvironmentObject var store: NoteStore
+    @EnvironmentObject var theme: ThemeStore
+    let file: LinkedFile
+
+    private var isMissing: Bool {
+        store.resolvedURL(for: file) == nil
+    }
+
+    private var icon: NSImage {
+        if let url = store.resolvedURL(for: file) {
+            return NSWorkspace.shared.icon(forFile: url.path)
+        }
+        return NSWorkspace.shared.icon(for: .item)
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(nsImage: icon)
+                .resizable()
+                .frame(width: 28, height: 28)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(file.fileName)
+                    .font(theme.bodyFont(13, weight: .semibold))
+                    .foregroundStyle(theme.textPrimary)
+                    .lineLimit(1)
+
+                if isMissing {
+                    Label("File not found — try Relink", systemImage: "exclamationmark.triangle.fill")
+                        .font(theme.bodyFont(10))
+                        .foregroundStyle(.orange)
+                } else {
+                    Text("Added \(file.dateAdded.formatted(date: .abbreviated, time: .omitted))")
+                        .font(theme.bodyFont(10))
+                        .foregroundStyle(theme.textTertiary)
+                }
+            }
+
+            Spacer()
+
+            Image(systemName: "arrow.up.forward.square")
+                .font(.system(size: 12))
+                .foregroundStyle(theme.textTertiary)
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .softCard(cornerRadius: 12)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            store.openLinkedFile(file)
+        }
+        .opacity(isMissing ? 0.6 : 1)
     }
 }

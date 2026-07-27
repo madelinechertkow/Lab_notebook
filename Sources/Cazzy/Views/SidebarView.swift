@@ -7,6 +7,7 @@ enum SidebarItem: Hashable {
     case protocols
     case plateMaps
     case gelMaps
+    case paperTracker
     case tag(String)
 }
 
@@ -135,6 +136,22 @@ struct SidebarView: View {
                         .foregroundStyle(theme.accent)
                 }
                 .tag(SidebarItem.gelMaps)
+
+                Label {
+                    HStack {
+                        Text("Paper Tracker")
+                            .font(theme.bodyFont(13, weight: .medium))
+                            .foregroundStyle(theme.textPrimary)
+                        Spacer()
+                        Text("\(store.paperEntries.count)")
+                            .font(theme.bodyFont(11))
+                            .foregroundStyle(theme.textSecondary)
+                    }
+                } icon: {
+                    Image(systemName: "tablecells.fill")
+                        .foregroundStyle(theme.notebookAccent(2))
+                }
+                .tag(SidebarItem.paperTracker)
             }
 
             Section {

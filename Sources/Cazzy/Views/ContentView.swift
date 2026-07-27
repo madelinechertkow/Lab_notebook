@@ -8,9 +8,10 @@ struct ContentView: View {
     @State private var selectedProtocolID: UUID?
     @State private var selectedPlateMapID: UUID?
     @State private var selectedLadderID: UUID?
+    @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $splitViewVisibility) {
             SidebarView(selection: $sidebarSelection)
                 .navigationSplitViewColumnWidth(min: 190, ideal: 210)
         } content: {
@@ -23,6 +24,9 @@ struct ContentView: View {
             } else if sidebarSelection == .gelMaps {
                 GelLadderListView(selectedLadderID: $selectedLadderID)
                     .navigationSplitViewColumnWidth(min: 260, ideal: 300)
+            } else if sidebarSelection == .paperTracker {
+                PaperTrackerView()
+                    .navigationSplitViewColumnWidth(min: 700, ideal: 1000)
             } else {
                 NoteListView(sidebarSelection: sidebarSelection, selectedNoteID: $selectedNoteID)
                     .navigationSplitViewColumnWidth(min: 260, ideal: 300)
@@ -53,11 +57,12 @@ struct ContentView: View {
             }
         }
         .tint(theme.accentDeep)
-        .onChange(of: sidebarSelection) { _ in
+        .onChange(of: sidebarSelection) { newValue in
             selectedNoteID = nil
             selectedProtocolID = nil
             selectedPlateMapID = nil
             selectedLadderID = nil
+            splitViewVisibility = newValue == .paperTracker ? .doubleColumn : .all
         }
         .onChange(of: store.labModeFilter) { _ in
             if case .notebook(let id) = sidebarSelection,
