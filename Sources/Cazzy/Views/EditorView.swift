@@ -20,6 +20,7 @@ struct EditorView: View {
     @State private var plateMapResults: [String: PlateMapInstance] = [:]
     @State private var gelMapResults: [String: GelMapInstance] = [:]
     @State private var showingGelImagePicker = false
+    @State private var showingImagePicker = false
     @StateObject private var controller = EditorController()
 
     private var currentNote: Note? {
@@ -123,7 +124,8 @@ struct EditorView: View {
                     plateMapTemplates: store.plateMapTemplates,
                     specialCharacters: shortcuts.shortcuts,
                     onInsertPlateMap: insertPlateMap,
-                    onInsertGelMap: { showingGelImagePicker = true }
+                    onInsertGelMap: { showingGelImagePicker = true },
+                    onInsertImage: { showingImagePicker = true }
                 )
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
@@ -191,6 +193,11 @@ struct EditorView: View {
                 insertGelMap(from: url)
             }
         }
+        .fileImporter(isPresented: $showingImagePicker, allowedContentTypes: [.image]) { result in
+            if case .success(let url) = result {
+                insertImage(from: url)
+            }
+        }
         .sheet(isPresented: $showingEnvironmentManager) {
             CodeEnvironmentManagerView()
         }
@@ -248,6 +255,19 @@ struct EditorView: View {
         let block = ExecBlockParser.gelMapTemplate(id: id)
         controller.insertBlock(block.text, cursorOffset: block.cursorOffset)
         gelMapResults[id] = GelMapInstance(imageFileName: filename)
+        persist()
+    }
+
+    /// Inserts a plain inline `![alt](...)` markdown image at the cursor, copying the chosen
+    /// photo into Application Support/Cazzy/NoteImages first (see NoteImageStore) — unlike the
+    /// gel map block, this is just regular content, rendered by MarkdownPreview in Preview mode.
+    private func insertImage(from url: URL) {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        guard let filename = try? NoteImageStore.importImage(from: url) else { return }
+
+        let alt = url.deletingPathExtension().lastPathComponent
+        controller.insertText(NoteImageStore.markdownReference(filename: filename, alt: alt))
         persist()
     }
 
@@ -336,6 +356,7 @@ struct FormattingToolbar: View {
     var specialCharacters: [SpecialCharacterShortcut] = []
     var onInsertPlateMap: (PlateMapTemplate?, PlateSize) -> Void = { _, _ in }
     var onInsertGelMap: () -> Void = {}
+    var onInsertImage: () -> Void = {}
 
     @State private var showingSpecialCharacters = false
 
@@ -357,6 +378,7 @@ struct FormattingToolbar: View {
                 toolButton("checklist", "Checklist") { controller.prefixCurrentLines(with: "- [ ] ") }
                 Divider().frame(height: 14)
                 specialCharacterButton
+                toolButton("photo", "Insert image") { onInsertImage() }
                 if allowsPlateGelMaps {
                     Divider().frame(height: 14)
                     plateMapMenu
