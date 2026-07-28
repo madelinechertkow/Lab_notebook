@@ -189,7 +189,7 @@ struct Note: Identifiable, Codable, Equatable {
     }
 
     var preview: String {
-        let stripped = content
+        let stripped = replaceGreekLetterCommands(replaceFractionNotation(content))
             .replacingOccurrences(of: "#", with: "")
             .replacingOccurrences(of: "*", with: "")
             .replacingOccurrences(of: "- [ ] ", with: "")

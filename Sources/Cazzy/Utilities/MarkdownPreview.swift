@@ -221,7 +221,9 @@ private let greekLetterCommands: [String: String] = [
 
 private let greekLetterCommandsByDescendingLength = greekLetterCommands.sorted { $0.key.count > $1.key.count }
 
-private func replaceGreekLetterCommands(_ text: String) -> String {
+/// Not private: also used by `Note.preview` (`Note.swift`) so the note-list sidebar snippet
+/// shows the same glyphs as the rendered preview, not raw LaTeX-style source.
+func replaceGreekLetterCommands(_ text: String) -> String {
     var result = text
     for (command, glyph) in greekLetterCommandsByDescendingLength {
         result = result.replacingOccurrences(
@@ -247,7 +249,8 @@ private func replaceGreekLetterCommands(_ text: String) -> String {
 // letter pass so a numerator/denominator containing its own Greek command (`\frac{\alpha}{\beta}`)
 // still gets converted.
 
-private func replaceFractionNotation(_ text: String) -> String {
+/// Not private: also used by `Note.preview` (`Note.swift`), see `replaceGreekLetterCommands`.
+func replaceFractionNotation(_ text: String) -> String {
     var result = text
     result = result.replacingOccurrences(
         of: #"\$\\frac\{([^{}]+)\}\{([^{}]+)\}\$"#,
