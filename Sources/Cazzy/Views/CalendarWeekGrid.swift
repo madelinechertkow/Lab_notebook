@@ -204,8 +204,14 @@ private struct ExperimentBlock: View {
         experiment.end > dayInterval.end
     }
 
-    private var conflictsWithBusy: Bool {
+    /// Whether the raw time interval overlaps a busy Apple Calendar slot, regardless of
+    /// whether the user has chosen to ignore that overlap for this experiment.
+    private var rawOverlap: Bool {
         appleCalendar.overlapsBusy(experiment.interval)
+    }
+
+    private var conflictsWithBusy: Bool {
+        rawOverlap && !experiment.overlapIgnored
     }
 
     var body: some View {
@@ -266,6 +272,15 @@ private struct ExperimentBlock: View {
             store.updateScheduledExperiment(updated)
         }))
         entries.append(.separator)
+
+        if rawOverlap {
+            entries.append(.action(experiment.overlapIgnored ? "Stop Ignoring Overlap" : "Ignore Overlap", {
+                var updated = experiment
+                updated.overlapIgnored.toggle()
+                store.updateScheduledExperiment(updated)
+            }))
+            entries.append(.separator)
+        }
 
         if let noteID = experiment.linkedNoteID, store.notes.contains(where: { $0.id == noteID }) {
             entries.append(.action("Open Notebook Entry", {
@@ -370,7 +385,7 @@ private struct ExperimentBlock: View {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 8))
                                 .foregroundStyle(.yellow)
-                                .help("Overlaps a busy time on your Apple Calendar")
+                                .help("Overlaps a busy time on your Apple Calendar — right-click to ignore")
                         }
                     }
                     if height > 34 {

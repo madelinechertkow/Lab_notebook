@@ -43,6 +43,10 @@ struct ExperimentEditorSheet: View {
         DateInterval(start: start, duration: TimeInterval(max(durationMinutes, 15) * 60))
     }
 
+    private var hasOverlap: Bool {
+        appleCalendar.accessState == .granted && !appleCalendar.isFree(interval)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(existing == nil ? "New Experiment" : "Edit Experiment")
@@ -182,7 +186,7 @@ struct ExperimentEditorSheet: View {
     private var availabilityLine: some View {
         switch appleCalendar.accessState {
         case .granted:
-            if appleCalendar.isFree(interval) {
+            if !hasOverlap {
                 Label("You're free at this time", systemImage: "checkmark.circle.fill")
                     .font(theme.bodyFont(11, weight: .medium))
                     .foregroundStyle(.green)

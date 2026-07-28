@@ -70,6 +70,7 @@ struct CazzyApp: App {
                 .environmentObject(store)
                 .environmentObject(themeStore)
                 .environmentObject(shortcutStore)
+                .environmentObject(appleCalendar)
         }
     }
 

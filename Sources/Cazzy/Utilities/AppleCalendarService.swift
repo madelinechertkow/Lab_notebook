@@ -20,6 +20,23 @@ final class AppleCalendarService: ObservableObject {
     /// Busy intervals for the most recently requested date range, oldest first.
     @Published private(set) var busyIntervals: [DateInterval] = []
 
+    /// Every Apple Calendar the user has, for the Settings picker. Populated once access
+    /// is granted; empty until then.
+    @Published private(set) var availableCalendars: [EKCalendar] = []
+    /// Which of `availableCalendars` count toward busy/free math and the overlap warning.
+    /// Defaults to "all of them" the first time calendars are seen, matching the old
+    /// unfiltered behavior; persisted afterward so the user's choice sticks.
+    @Published var selectedCalendarIdentifiers: Set<String> = [] {
+        didSet {
+            guard oldValue != selectedCalendarIdentifiers else { return }
+            UserDefaults.standard.set(Array(selectedCalendarIdentifiers), forKey: Self.selectedCalendarsKey)
+            if let range = lastFetchedRange {
+                refreshBusyIntervals(for: range)
+            }
+        }
+    }
+    private static let selectedCalendarsKey = "cazzySelectedAppleCalendarIdentifiers"
+
     /// Identifiers of events Cazzy itself pushed. These are excluded from busy/free math —
     /// otherwise an experiment would "conflict" with its own Apple Calendar mirror.
     /// The calendar window seeds this from the store; pushEvent keeps it current in-session.
@@ -30,6 +47,7 @@ final class AppleCalendarService: ObservableObject {
 
     init() {
         refreshAccessState()
+        refreshAvailableCalendars()
         // Keep the overlay current if the user edits their Apple Calendar while Cazzy is open.
         NotificationCenter.default.addObserver(
             self,
@@ -45,9 +63,33 @@ final class AppleCalendarService: ObservableObject {
 
     @objc private func storeChanged() {
         DispatchQueue.main.async { [weak self] in
-            guard let self, let range = self.lastFetchedRange else { return }
+            guard let self else { return }
+            self.refreshAvailableCalendars()
+            guard let range = self.lastFetchedRange else { return }
             self.refreshBusyIntervals(for: range)
         }
+    }
+
+    /// Refreshes the list of calendars for the Settings picker. New calendars default to
+    /// enabled; calendars the user removed from Apple Calendar drop out of the saved selection.
+    private func refreshAvailableCalendars() {
+        guard accessState == .granted else { return }
+        let calendars = eventStore.calendars(for: .event)
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        availableCalendars = calendars
+        let known = Set(calendars.map(\.calendarIdentifier))
+        if let saved = UserDefaults.standard.array(forKey: Self.selectedCalendarsKey) as? [String] {
+            selectedCalendarIdentifiers = Set(saved).intersection(known)
+        } else {
+            selectedCalendarIdentifiers = known
+        }
+    }
+
+    /// Calendars to actually query for busy/free math — `nil` (unfiltered) until the
+    /// calendar list has loaded at least once, so nothing looks falsely "free" in that gap.
+    private var filteredCalendars: [EKCalendar]? {
+        guard !availableCalendars.isEmpty else { return nil }
+        return availableCalendars.filter { selectedCalendarIdentifiers.contains($0.calendarIdentifier) }
     }
 
     private func refreshAccessState() {
@@ -77,6 +119,7 @@ final class AppleCalendarService: ObservableObject {
                 guard let self else { return }
                 self.accessState = granted ? .granted : .denied
                 if granted {
+                    self.refreshAvailableCalendars()
                     self.refreshBusyIntervals(for: range)
                 }
             }
@@ -92,6 +135,7 @@ final class AppleCalendarService: ObservableObject {
         default:
             refreshAccessState()
             if accessState == .granted {
+                refreshAvailableCalendars()
                 refreshBusyIntervals(for: range)
             }
         }
@@ -102,7 +146,7 @@ final class AppleCalendarService: ObservableObject {
     func refreshBusyIntervals(for range: DateInterval) {
         guard accessState == .granted else { return }
         lastFetchedRange = range
-        let predicate = eventStore.predicateForEvents(withStart: range.start, end: range.end, calendars: nil)
+        let predicate = eventStore.predicateForEvents(withStart: range.start, end: range.end, calendars: filteredCalendars)
         let events = eventStore.events(matching: predicate)
         let intervals = events
             .filter { !$0.isAllDay && !isPushedByCazzy($0) }
@@ -123,7 +167,7 @@ final class AppleCalendarService: ObservableObject {
     /// Queries the store directly so it works for dates outside the fetched week too.
     func isFree(_ interval: DateInterval) -> Bool {
         guard accessState == .granted else { return true }
-        let predicate = eventStore.predicateForEvents(withStart: interval.start, end: interval.end, calendars: nil)
+        let predicate = eventStore.predicateForEvents(withStart: interval.start, end: interval.end, calendars: filteredCalendars)
         return !eventStore.events(matching: predicate).contains { event in
             guard !event.isAllDay, !isPushedByCazzy(event),
                   let start = event.startDate, let end = event.endDate else { return false }
@@ -139,11 +183,41 @@ final class AppleCalendarService: ObservableObject {
 
     // MARK: - Pushing experiments to Apple Calendar
 
+    private static let cazzyCalendarIdentifierKey = "cazzyAppleCalendarIdentifier"
+    private static let cazzyCalendarTitle = "Cazzy"
+
+    /// Finds Cazzy's dedicated Apple Calendar, creating it on first use, so pushed
+    /// experiments don't mix into the user's default calendar. The chosen calendar's
+    /// identifier is cached in UserDefaults to avoid re-searching every push.
+    private func cazzyCalendar() -> EKCalendar? {
+        if let id = UserDefaults.standard.string(forKey: Self.cazzyCalendarIdentifierKey),
+           let cached = eventStore.calendar(withIdentifier: id) {
+            return cached
+        }
+        if let existing = eventStore.calendars(for: .event).first(where: { $0.title == Self.cazzyCalendarTitle }) {
+            UserDefaults.standard.set(existing.calendarIdentifier, forKey: Self.cazzyCalendarIdentifierKey)
+            return existing
+        }
+        guard let source = eventStore.defaultCalendarForNewEvents?.source
+            ?? eventStore.sources.first(where: { $0.sourceType == .local })
+            ?? eventStore.sources.first else { return nil }
+        let calendar = EKCalendar(for: .event, eventStore: eventStore)
+        calendar.title = Self.cazzyCalendarTitle
+        calendar.source = source
+        do {
+            try eventStore.saveCalendar(calendar, commit: true)
+            UserDefaults.standard.set(calendar.calendarIdentifier, forKey: Self.cazzyCalendarIdentifierKey)
+            return calendar
+        } catch {
+            return nil
+        }
+    }
+
     /// Creates an Apple Calendar event mirroring the experiment. Returns the event
     /// identifier to store on the experiment, or nil if saving failed.
     func pushEvent(for experiment: ScheduledExperiment) -> String? {
         guard accessState == .granted,
-              let calendar = eventStore.defaultCalendarForNewEvents else { return nil }
+              let calendar = cazzyCalendar() else { return nil }
         let event = EKEvent(eventStore: eventStore)
         event.calendar = calendar
         event.title = experiment.title

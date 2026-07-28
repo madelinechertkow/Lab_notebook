@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import EventKit
 
 /// A horizontal `ScrollView` replacement that forces the thin, auto-hiding "overlay" scroller
 /// style on its `NSScrollView` — plain SwiftUI `ScrollView` has no way to opt out of the
@@ -42,6 +43,7 @@ struct SettingsView: View {
     @EnvironmentObject var store: NoteStore
     @EnvironmentObject var theme: ThemeStore
     @EnvironmentObject var shortcuts: ShortcutStore
+    @EnvironmentObject var appleCalendar: AppleCalendarService
     @State private var showingShortcutManager = false
 
     var body: some View {
@@ -51,9 +53,13 @@ struct SettingsView: View {
                     get: { store.syncToAppleCalendar },
                     set: { store.setSyncToAppleCalendar($0) }
                 ))
-                Text("New experiments are mirrored to your default calendar so they show up on your other devices. Individual experiments can still be added or removed from the calendar via their popover.")
+                Text("New experiments are mirrored to a dedicated \"Cazzy\" calendar so they show up on your other devices. Individual experiments can still be added or removed from the calendar via their popover.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+            }
+
+            Section("Calendars to Show") {
+                calendarPickerContent
             }
 
             Section("Appearance") {
@@ -141,6 +147,63 @@ struct SettingsView: View {
             get: { Color(hex: theme.theme[keyPath: keyPath]) },
             set: { theme.theme[keyPath: keyPath] = $0.toHex() }
         )
+    }
+
+    @ViewBuilder
+    private var calendarPickerContent: some View {
+        switch appleCalendar.accessState {
+        case .granted:
+            if appleCalendar.availableCalendars.isEmpty {
+                Text("No calendars found in Apple Calendar.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(appleCalendar.availableCalendars, id: \.calendarIdentifier) { calendar in
+                    CalendarToggleRow(calendar: calendar, appleCalendar: appleCalendar)
+                }
+                Text("Only checked calendars count toward busy times and overlap warnings on Cazzy's calendar.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        case .denied:
+            Text("Calendar access was denied. Grant access in System Settings → Privacy & Security → Calendars to choose which calendars show here.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        case .undetermined, .unavailable:
+            Text("Open the Calendar window and grant access to Apple Calendar to choose which calendars show here.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// One row in the "Calendars to Show" list — a checkbox for a single Apple Calendar.
+private struct CalendarToggleRow: View {
+    let calendar: EKCalendar
+    @ObservedObject var appleCalendar: AppleCalendarService
+
+    private var isOn: Binding<Bool> {
+        Binding(
+            get: { appleCalendar.selectedCalendarIdentifiers.contains(calendar.calendarIdentifier) },
+            set: { newValue in
+                if newValue {
+                    appleCalendar.selectedCalendarIdentifiers.insert(calendar.calendarIdentifier)
+                } else {
+                    appleCalendar.selectedCalendarIdentifiers.remove(calendar.calendarIdentifier)
+                }
+            }
+        )
+    }
+
+    var body: some View {
+        Toggle(isOn: isOn) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(Color(cgColor: calendar.cgColor))
+                    .frame(width: 8, height: 8)
+                Text(calendar.title)
+            }
+        }
     }
 }
 

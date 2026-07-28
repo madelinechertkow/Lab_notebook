@@ -78,6 +78,9 @@ struct ScheduledExperiment: Identifiable, Codable, Equatable {
     var linkedNoteID: UUID?
     /// Identifier of the EKEvent pushed to Apple Calendar, if the user chose to push one.
     var appleCalendarEventID: String?
+    /// Set from the calendar's right-click menu when the user acknowledges an overlap and
+    /// wants the warning triangle suppressed for this experiment going forward.
+    var overlapIgnored: Bool = false
 
     init(
         id: UUID = UUID(),
@@ -90,7 +93,8 @@ struct ScheduledExperiment: Identifiable, Codable, Equatable {
         isCompleted: Bool = false,
         seriesID: UUID? = nil,
         linkedNoteID: UUID? = nil,
-        appleCalendarEventID: String? = nil
+        appleCalendarEventID: String? = nil,
+        overlapIgnored: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -103,10 +107,11 @@ struct ScheduledExperiment: Identifiable, Codable, Equatable {
         self.seriesID = seriesID
         self.linkedNoteID = linkedNoteID
         self.appleCalendarEventID = appleCalendarEventID
+        self.overlapIgnored = overlapIgnored
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, title, protocolID, start, durationMinutes, color, notes, isCompleted, seriesID, linkedNoteID, appleCalendarEventID
+        case id, title, protocolID, start, durationMinutes, color, notes, isCompleted, seriesID, linkedNoteID, appleCalendarEventID, overlapIgnored
     }
 
     init(from decoder: Decoder) throws {
@@ -122,6 +127,7 @@ struct ScheduledExperiment: Identifiable, Codable, Equatable {
         seriesID = try container.decodeIfPresent(UUID.self, forKey: .seriesID)
         linkedNoteID = try container.decodeIfPresent(UUID.self, forKey: .linkedNoteID)
         appleCalendarEventID = try container.decodeIfPresent(String.self, forKey: .appleCalendarEventID)
+        overlapIgnored = try container.decodeIfPresent(Bool.self, forKey: .overlapIgnored) ?? false
     }
 
     var end: Date {
