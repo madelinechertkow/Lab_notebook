@@ -181,11 +181,96 @@ private func applyInlineStyleMarkers(_ input: AttributedString) -> AttributedStr
     return result
 }
 
+// MARK: - LaTeX-style Greek letters (`\theta`, `$\theta$`, etc.)
+//
+// Scientists habitually type Greek letters as LaTeX command names, often wrapped in single
+// `$...$` math delimiters (e.g. `$\theta$`). CommonMark gives `$` no meaning, and its
+// backslash-escape rule only applies to ASCII punctuation (not letters), so Apple's parser
+// leaves both untouched and they show up on screen exactly as typed instead of rendering as
+// θ. This is plain text substitution done before parsing: a `$...$` pair wrapping a single
+// known command has its delimiters stripped along with the command; a bare command found
+// elsewhere is swapped for its glyph in place. Longest-name-first avoids a short command
+// (`theta`) ever winning over a longer one that shares no boundary with it (`vartheta`).
+
+private let greekLetterCommands: [String: String] = [
+    "alpha": "α", "Alpha": "Α",
+    "beta": "β", "Beta": "Β",
+    "gamma": "γ", "Gamma": "Γ",
+    "delta": "δ", "Delta": "Δ",
+    "epsilon": "ε", "varepsilon": "ε", "Epsilon": "Ε",
+    "zeta": "ζ", "Zeta": "Ζ",
+    "eta": "η", "Eta": "Η",
+    "theta": "θ", "vartheta": "ϑ", "Theta": "Θ",
+    "iota": "ι", "Iota": "Ι",
+    "kappa": "κ", "Kappa": "Κ",
+    "lambda": "λ", "Lambda": "Λ",
+    "mu": "μ", "Mu": "Μ",
+    "nu": "ν", "Nu": "Ν",
+    "xi": "ξ", "Xi": "Ξ",
+    "omicron": "ο", "Omicron": "Ο",
+    "pi": "π", "varpi": "ϖ", "Pi": "Π",
+    "rho": "ρ", "varrho": "ϱ", "Rho": "Ρ",
+    "sigma": "σ", "varsigma": "ς", "Sigma": "Σ",
+    "tau": "τ", "Tau": "Τ",
+    "upsilon": "υ", "Upsilon": "Υ",
+    "phi": "φ", "varphi": "ϕ", "Phi": "Φ",
+    "chi": "χ", "Chi": "Χ",
+    "psi": "ψ", "Psi": "Ψ",
+    "omega": "ω", "Omega": "Ω",
+]
+
+private let greekLetterCommandsByDescendingLength = greekLetterCommands.sorted { $0.key.count > $1.key.count }
+
+private func replaceGreekLetterCommands(_ text: String) -> String {
+    var result = text
+    for (command, glyph) in greekLetterCommandsByDescendingLength {
+        result = result.replacingOccurrences(
+            of: #"\$\\\#(command)\$"#,
+            with: glyph,
+            options: .regularExpression
+        )
+        result = result.replacingOccurrences(
+            of: #"\\\#(command)\b"#,
+            with: glyph,
+            options: .regularExpression
+        )
+    }
+    return result
+}
+
+// MARK: - LaTeX-style fractions (`\frac{a}{b}`, `$\frac{a}{b}$`)
+//
+// Same gap as the Greek letters above: `\frac{260}{280}` has no meaning to CommonMark, so it
+// passes through untouched. There's no stacked-fraction rendering available in plain `Text`,
+// so this substitutes the visually closest inline equivalent — numerator, a fraction slash,
+// denominator — same dollar-stripping behavior as the Greek letters. Runs before the Greek
+// letter pass so a numerator/denominator containing its own Greek command (`\frac{\alpha}{\beta}`)
+// still gets converted.
+
+private func replaceFractionNotation(_ text: String) -> String {
+    var result = text
+    result = result.replacingOccurrences(
+        of: #"\$\\frac\{([^{}]+)\}\{([^{}]+)\}\$"#,
+        with: "$1⁄$2",
+        options: .regularExpression
+    )
+    result = result.replacingOccurrences(
+        of: #"\\frac\{([^{}]+)\}\{([^{}]+)\}"#,
+        with: "$1⁄$2",
+        options: .regularExpression
+    )
+    return result
+}
+
 private func markdownBlocks(from text: String) -> [MarkdownBlock] {
     let preprocessed = preprocessInlineStyleTags(
-        text
-            .replacingOccurrences(of: "- [ ] ", with: "☐ ")
-            .replacingOccurrences(of: "- [x] ", with: "☑ ")
+        replaceGreekLetterCommands(
+            replaceFractionNotation(
+                text
+                    .replacingOccurrences(of: "- [ ] ", with: "☐ ")
+                    .replacingOccurrences(of: "- [x] ", with: "☑ ")
+            )
+        )
     )
 
     guard let full = try? AttributedString(
