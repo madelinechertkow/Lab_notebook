@@ -45,8 +45,6 @@ struct PaperEntry: Identifiable, Codable, Equatable {
     var softwareTools: String = ""
 
     // SCIENCE
-    var keyGenesTargets: String = ""
-    var cancerType: String = ""
     var novelFinding: String = ""
     var summary: String = ""
     var figuresOfInterest: String = ""
@@ -64,7 +62,7 @@ struct PaperEntry: Identifiable, Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case id, dateAdded, datePublished, firstAuthor, lastAuthor, journal, year, title, link,
              methods, modelsUsed, clinicalSamples, modelOrganism, sampleSize, dataAvailability, softwareTools,
-             keyGenesTargets, cancerType, novelFinding, summary, figuresOfInterest,
+             novelFinding, summary, figuresOfInterest,
              relevance, projectNotes, readStatus, tags, followUpNeeded, createdAt, updatedAt
     }
 
@@ -85,8 +83,6 @@ struct PaperEntry: Identifiable, Codable, Equatable {
         sampleSize: String = "",
         dataAvailability: String = "",
         softwareTools: String = "",
-        keyGenesTargets: String = "",
-        cancerType: String = "",
         novelFinding: String = "",
         summary: String = "",
         figuresOfInterest: String = "",
@@ -114,8 +110,6 @@ struct PaperEntry: Identifiable, Codable, Equatable {
         self.sampleSize = sampleSize
         self.dataAvailability = dataAvailability
         self.softwareTools = softwareTools
-        self.keyGenesTargets = keyGenesTargets
-        self.cancerType = cancerType
         self.novelFinding = novelFinding
         self.summary = summary
         self.figuresOfInterest = figuresOfInterest
@@ -146,8 +140,6 @@ struct PaperEntry: Identifiable, Codable, Equatable {
         sampleSize = try container.decodeIfPresent(String.self, forKey: .sampleSize) ?? ""
         dataAvailability = try container.decodeIfPresent(String.self, forKey: .dataAvailability) ?? ""
         softwareTools = try container.decodeIfPresent(String.self, forKey: .softwareTools) ?? ""
-        keyGenesTargets = try container.decodeIfPresent(String.self, forKey: .keyGenesTargets) ?? ""
-        cancerType = try container.decodeIfPresent(String.self, forKey: .cancerType) ?? ""
         novelFinding = try container.decodeIfPresent(String.self, forKey: .novelFinding) ?? ""
         summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
         figuresOfInterest = try container.decodeIfPresent(String.self, forKey: .figuresOfInterest) ?? ""

@@ -30,8 +30,6 @@ struct PaperTrackerView: View {
                     || entry.lastAuthor.lowercased().contains(query)
                     || entry.title.lowercased().contains(query)
                     || entry.journal.lowercased().contains(query)
-                    || entry.cancerType.lowercased().contains(query)
-                    || entry.keyGenesTargets.lowercased().contains(query)
                     || entry.tags.contains(where: { $0.lowercased().contains(query) })
             }
         }
@@ -394,8 +392,6 @@ struct PaperDetailPanel: View {
                     }
 
                     section("Science") {
-                        labeledField("Cancer Type", text: entryBinding.cancerType)
-                        labeledField("Key Genes / Targets", text: entryBinding.keyGenesTargets)
                         labeledArea("Novel Finding", text: entryBinding.novelFinding)
                         labeledArea("Summary", text: entryBinding.summary)
                         labeledField("Figures of Interest", text: entryBinding.figuresOfInterest)
