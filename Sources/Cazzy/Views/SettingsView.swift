@@ -53,9 +53,10 @@ struct SettingsView: View {
                     get: { store.syncToAppleCalendar },
                     set: { store.setSyncToAppleCalendar($0) }
                 ))
-                Text("New experiments are mirrored to a dedicated \"Cazzy\" calendar so they show up on your other devices. Individual experiments can still be added or removed from the calendar via their popover.")
+                Text("New experiments are mirrored to Apple Calendar so they show up on your other devices. Individual experiments can still be added or removed from the calendar via their popover.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                pushCalendarPicker
             }
 
             Section("Calendars to Show") {
@@ -149,6 +150,24 @@ struct SettingsView: View {
         )
     }
 
+    /// Which real Apple Calendar new experiments get pushed into. Deliberately a choice among
+    /// existing calendars rather than an auto-created one — see the doc comment on
+    /// `AppleCalendarService.pushCalendar` for why auto-creation was dropped.
+    @ViewBuilder
+    private var pushCalendarPicker: some View {
+        if appleCalendar.accessState == .granted, !appleCalendar.availableCalendars.isEmpty {
+            Picker("Add new experiments to", selection: Binding(
+                get: { appleCalendar.pushCalendarIdentifier },
+                set: { appleCalendar.pushCalendarIdentifier = $0 }
+            )) {
+                Text("Default Calendar").tag(String?.none)
+                ForEach(appleCalendar.availableCalendars, id: \.calendarIdentifier) { calendar in
+                    Text(calendar.title).tag(String?.some(calendar.calendarIdentifier))
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private var calendarPickerContent: some View {
         switch appleCalendar.accessState {
@@ -161,7 +180,7 @@ struct SettingsView: View {
                 ForEach(appleCalendar.availableCalendars, id: \.calendarIdentifier) { calendar in
                     CalendarToggleRow(calendar: calendar, appleCalendar: appleCalendar)
                 }
-                Text("Only checked calendars count toward busy times and overlap warnings on Cazzy's calendar.")
+                Text("Only checked calendars count toward busy times and overlap warnings.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }

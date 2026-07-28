@@ -37,6 +37,20 @@ final class AppleCalendarService: ObservableObject {
     }
     private static let selectedCalendarsKey = "cazzySelectedAppleCalendarIdentifiers"
 
+    /// Which Apple Calendar new experiments get pushed into. `nil` means "use the system
+    /// default calendar for new events" — the calendar Apple Calendar itself would use.
+    @Published var pushCalendarIdentifier: String? {
+        didSet {
+            guard oldValue != pushCalendarIdentifier else { return }
+            if let pushCalendarIdentifier {
+                UserDefaults.standard.set(pushCalendarIdentifier, forKey: Self.pushCalendarKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.pushCalendarKey)
+            }
+        }
+    }
+    private static let pushCalendarKey = "cazzyPushCalendarIdentifier"
+
     /// Identifiers of events Cazzy itself pushed. These are excluded from busy/free math —
     /// otherwise an experiment would "conflict" with its own Apple Calendar mirror.
     /// The calendar window seeds this from the store; pushEvent keeps it current in-session.
@@ -46,6 +60,7 @@ final class AppleCalendarService: ObservableObject {
     private var lastFetchedRange: DateInterval?
 
     init() {
+        pushCalendarIdentifier = UserDefaults.standard.string(forKey: Self.pushCalendarKey)
         refreshAccessState()
         refreshAvailableCalendars()
         // Keep the overlay current if the user edits their Apple Calendar while Cazzy is open.
@@ -183,41 +198,22 @@ final class AppleCalendarService: ObservableObject {
 
     // MARK: - Pushing experiments to Apple Calendar
 
-    private static let cazzyCalendarIdentifierKey = "cazzyAppleCalendarIdentifier"
-    private static let cazzyCalendarTitle = "Cazzy"
-
-    /// Finds Cazzy's dedicated Apple Calendar, creating it on first use, so pushed
-    /// experiments don't mix into the user's default calendar. The chosen calendar's
-    /// identifier is cached in UserDefaults to avoid re-searching every push.
-    private func cazzyCalendar() -> EKCalendar? {
-        if let id = UserDefaults.standard.string(forKey: Self.cazzyCalendarIdentifierKey),
-           let cached = eventStore.calendar(withIdentifier: id) {
-            return cached
+    /// The calendar new experiments get pushed into: the user's Settings choice if it still
+    /// exists, otherwise the system default. Auto-creating a dedicated calendar turned out to
+    /// be unreliable (EventKit accepted the creation in-session but it never showed up in
+    /// Calendar.app and didn't survive a restart) — picking from real, existing calendars
+    /// sidesteps that entirely.
+    private var pushCalendar: EKCalendar? {
+        if let id = pushCalendarIdentifier, let chosen = availableCalendars.first(where: { $0.calendarIdentifier == id }) {
+            return chosen
         }
-        if let existing = eventStore.calendars(for: .event).first(where: { $0.title == Self.cazzyCalendarTitle }) {
-            UserDefaults.standard.set(existing.calendarIdentifier, forKey: Self.cazzyCalendarIdentifierKey)
-            return existing
-        }
-        guard let source = eventStore.defaultCalendarForNewEvents?.source
-            ?? eventStore.sources.first(where: { $0.sourceType == .local })
-            ?? eventStore.sources.first else { return nil }
-        let calendar = EKCalendar(for: .event, eventStore: eventStore)
-        calendar.title = Self.cazzyCalendarTitle
-        calendar.source = source
-        do {
-            try eventStore.saveCalendar(calendar, commit: true)
-            UserDefaults.standard.set(calendar.calendarIdentifier, forKey: Self.cazzyCalendarIdentifierKey)
-            return calendar
-        } catch {
-            return nil
-        }
+        return eventStore.defaultCalendarForNewEvents
     }
 
     /// Creates an Apple Calendar event mirroring the experiment. Returns the event
     /// identifier to store on the experiment, or nil if saving failed.
     func pushEvent(for experiment: ScheduledExperiment) -> String? {
-        guard accessState == .granted,
-              let calendar = cazzyCalendar() else { return nil }
+        guard accessState == .granted, let calendar = pushCalendar else { return nil }
         let event = EKEvent(eventStore: eventStore)
         event.calendar = calendar
         event.title = experiment.title
