@@ -197,9 +197,14 @@ struct EditorView: View {
         .onAppear(perform: loadFromNote)
         .onChange(of: store.undoTick) { _ in loadFromNote() }
         .fileImporter(
+            // The `set` half is intentionally a no-op: clearing imagePickerTarget only ever
+            // happens below, inside onCompletion. If this `set` also cleared it on dismissal,
+            // and SwiftUI happened to call that before onCompletion, the completion handler
+            // would read imagePickerTarget as already-nil and silently do nothing — which is
+            // exactly what "picked a file, then nothing happened" looked like.
             isPresented: Binding(
                 get: { imagePickerTarget != nil },
-                set: { isPresented in if !isPresented { imagePickerTarget = nil } }
+                set: { _ in }
             ),
             allowedContentTypes: [.image]
         ) { result in
