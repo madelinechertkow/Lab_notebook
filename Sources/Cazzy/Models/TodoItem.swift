@@ -43,15 +43,37 @@ enum Weekday: Int, CaseIterable, Codable, Identifiable, Hashable {
     }
 }
 
+struct Subtask: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    var text: String
+    var isDone: Bool = false
+
+    enum CodingKeys: String, CodingKey {
+        case id, text, isDone
+    }
+
+    init(text: String) {
+        self.text = text
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        text = try container.decode(String.self, forKey: .text)
+        isDone = try container.decodeIfPresent(Bool.self, forKey: .isDone) ?? false
+    }
+}
+
 struct TodoItem: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var text: String
     var isDone: Bool = false
     var createdAt: Date = Date()
     var weekday: Weekday
+    var subtasks: [Subtask] = []
 
     enum CodingKeys: String, CodingKey {
-        case id, text, isDone, createdAt, weekday
+        case id, text, isDone, createdAt, weekday, subtasks
     }
 
     init(text: String, weekday: Weekday = .today) {
@@ -67,5 +89,6 @@ struct TodoItem: Identifiable, Codable, Equatable {
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         // Todos saved before day-of-week support existed default to Monday.
         weekday = try container.decodeIfPresent(Weekday.self, forKey: .weekday) ?? .monday
+        subtasks = try container.decodeIfPresent([Subtask].self, forKey: .subtasks) ?? []
     }
 }

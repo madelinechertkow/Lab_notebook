@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 private enum DayFilter: Hashable {
     case week
@@ -138,11 +139,7 @@ struct TodoListView: View {
                             .font(theme.bodyFont(12))
                             .foregroundStyle(theme.textTertiary)
                     } else {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(items) { item in
-                                TodoRow(item: item)
-                            }
-                        }
+                        TodoItemsList(weekday: weekday)
                     }
                 }
             }
@@ -158,9 +155,7 @@ struct TodoListView: View {
                     .font(theme.bodyFont(13))
                     .foregroundStyle(theme.textSecondary)
             } else {
-                ForEach(items) { item in
-                    TodoRow(item: item)
-                }
+                TodoItemsList(weekday: weekday)
             }
         }
         .padding(.vertical, 2)
@@ -188,48 +183,226 @@ private struct DayChip: View {
     }
 }
 
+/// Renders one weekday's tasks and wires up drag-to-reorder. `items` is a computed binding
+/// into `store.todos` filtered to `weekday`; reordering writes through it, but only during
+/// an active drag — disk writes are deferred to `TodoDropDelegate.performDrop` so hovering
+/// across rows doesn't hammer `save()`.
+private struct TodoItemsList: View {
+    @EnvironmentObject var store: NoteStore
+    let weekday: Weekday
+    @State private var draggedItemID: UUID?
+
+    private var items: Binding<[TodoItem]> {
+        Binding(
+            get: { store.todos(for: weekday) },
+            set: { newItems in
+                var iterator = newItems.makeIterator()
+                store.todos = store.todos.map { $0.weekday == weekday ? (iterator.next() ?? $0) : $0 }
+            }
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(items.wrappedValue) { item in
+                TodoRow(item: item, draggedItemID: $draggedItemID)
+                    .onDrop(
+                        of: [.text],
+                        delegate: TodoDropDelegate(
+                            targetID: item.id,
+                            items: items,
+                            draggedItemID: $draggedItemID,
+                            onFinished: { store.save() }
+                        )
+                    )
+            }
+        }
+    }
+}
+
+private struct TodoDropDelegate: DropDelegate {
+    let targetID: UUID
+    @Binding var items: [TodoItem]
+    @Binding var draggedItemID: UUID?
+    let onFinished: () -> Void
+
+    func dropEntered(info: DropInfo) {
+        guard let draggedItemID,
+              draggedItemID != targetID,
+              let fromIndex = items.firstIndex(where: { $0.id == draggedItemID }),
+              let toIndex = items.firstIndex(where: { $0.id == targetID }) else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            items.move(
+                fromOffsets: IndexSet(integer: fromIndex),
+                toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex
+            )
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggedItemID = nil
+        onFinished()
+        return true
+    }
+}
+
 private struct TodoRow: View {
     @EnvironmentObject var store: NoteStore
     @EnvironmentObject var theme: ThemeStore
     let item: TodoItem
+    @Binding var draggedItemID: UUID?
+    @State private var isHovering = false
+    @State private var isExpanded = false
+    @State private var newSubtaskText = ""
+
+    private var doneSubtaskCount: Int { item.subtasks.filter(\.isDone).count }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 10))
+                    .foregroundStyle(theme.textTertiary)
+                    .opacity(isHovering ? 1 : 0.35)
+                    .help("Drag to reorder")
+                    .onDrag {
+                        draggedItemID = item.id
+                        return NSItemProvider(object: item.id.uuidString as NSString)
+                    }
+
+                Button {
+                    store.toggleTodo(item)
+                } label: {
+                    Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 15))
+                        .foregroundStyle(item.isDone ? theme.accentDeep : theme.textSecondary)
+                }
+                .buttonStyle(.plain)
+
+                if !item.subtasks.isEmpty {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) { isExpanded.toggle() }
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .foregroundStyle(theme.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Text(item.text)
+                    .font(theme.bodyFont(13))
+                    .foregroundStyle(item.isDone ? theme.textTertiary : theme.textPrimary)
+                    .strikethrough(item.isDone, color: theme.textTertiary)
+
+                if !item.subtasks.isEmpty {
+                    Text("\(doneSubtaskCount)/\(item.subtasks.count)")
+                        .font(theme.bodyFont(10, weight: .medium))
+                        .foregroundStyle(theme.textTertiary)
+                }
+
+                Spacer()
+
+                Menu {
+                    ForEach(Weekday.allCases) { weekday in
+                        Button(weekday.label) { store.setTodoWeekday(item, weekday: weekday) }
+                    }
+                } label: {
+                    Text(item.weekday.shortLabel)
+                        .font(theme.bodyFont(10, weight: .medium))
+                        .foregroundStyle(theme.textTertiary)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+
+                if isHovering {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) { isExpanded = true }
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.textSecondary)
+                    .help("Add subtask")
+
+                    Button {
+                        store.deleteTodo(item)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.textSecondary)
+                }
+            }
+            .contentShape(Rectangle())
+            .onHover { hovering in isHovering = hovering }
+
+            if isExpanded {
+                subtasksSection
+            }
+        }
+    }
+
+    private var subtasksSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(item.subtasks) { subtask in
+                SubtaskRow(item: item, subtask: subtask)
+            }
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.turn.down.right")
+                    .font(.system(size: 9))
+                    .foregroundStyle(theme.textTertiary)
+                TextField("Add subtask", text: $newSubtaskText)
+                    .textFieldStyle(.plain)
+                    .font(theme.bodyFont(12))
+                    .onSubmit {
+                        store.addSubtask(newSubtaskText, to: item)
+                        newSubtaskText = ""
+                    }
+            }
+        }
+        .padding(.leading, 33)
+    }
+}
+
+private struct SubtaskRow: View {
+    @EnvironmentObject var store: NoteStore
+    @EnvironmentObject var theme: ThemeStore
+    let item: TodoItem
+    let subtask: Subtask
     @State private var isHovering = false
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Button {
-                store.toggleTodo(item)
+                store.toggleSubtask(subtask, in: item)
             } label: {
-                Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 15))
-                    .foregroundStyle(item.isDone ? theme.accentDeep : theme.textSecondary)
+                Image(systemName: subtask.isDone ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 12))
+                    .foregroundStyle(subtask.isDone ? theme.accentDeep : theme.textSecondary)
             }
             .buttonStyle(.plain)
 
-            Text(item.text)
-                .font(theme.bodyFont(13))
-                .foregroundStyle(item.isDone ? theme.textTertiary : theme.textPrimary)
-                .strikethrough(item.isDone, color: theme.textTertiary)
+            Text(subtask.text)
+                .font(theme.bodyFont(12))
+                .foregroundStyle(subtask.isDone ? theme.textTertiary : theme.textPrimary)
+                .strikethrough(subtask.isDone, color: theme.textTertiary)
 
             Spacer()
 
-            Menu {
-                ForEach(Weekday.allCases) { weekday in
-                    Button(weekday.label) { store.setTodoWeekday(item, weekday: weekday) }
-                }
-            } label: {
-                Text(item.weekday.shortLabel)
-                    .font(theme.bodyFont(10, weight: .medium))
-                    .foregroundStyle(theme.textTertiary)
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-
             if isHovering {
                 Button {
-                    store.deleteTodo(item)
+                    store.deleteSubtask(subtask, from: item)
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 9, weight: .bold))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(theme.textSecondary)

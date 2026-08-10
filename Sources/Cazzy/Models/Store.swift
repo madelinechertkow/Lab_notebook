@@ -424,6 +424,27 @@ final class NoteStore: ObservableObject {
         todos.filter { $0.weekday == weekday }
     }
 
+    func addSubtask(_ text: String, to item: TodoItem) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard let idx = todos.firstIndex(where: { $0.id == item.id }) else { return }
+        todos[idx].subtasks.append(Subtask(text: trimmed))
+        save()
+    }
+
+    func toggleSubtask(_ subtask: Subtask, in item: TodoItem) {
+        guard let idx = todos.firstIndex(where: { $0.id == item.id }),
+              let subIdx = todos[idx].subtasks.firstIndex(where: { $0.id == subtask.id }) else { return }
+        todos[idx].subtasks[subIdx].isDone.toggle()
+        save()
+    }
+
+    func deleteSubtask(_ subtask: Subtask, from item: TodoItem) {
+        guard let idx = todos.firstIndex(where: { $0.id == item.id }) else { return }
+        todos[idx].subtasks.removeAll { $0.id == subtask.id }
+        save()
+    }
+
     func clearCompletedTodos(weekday: Weekday? = nil) {
         if let weekday {
             todos.removeAll { $0.isDone && $0.weekday == weekday }
