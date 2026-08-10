@@ -133,9 +133,20 @@ struct FormattingTextEditor: NSViewRepresentable {
         if textView.string != text {
             textView.string = text
         }
-        textView.font = font
-        textView.textColor = textColor
-        textView.insertionPointColor = accentColor
+        // Reassigning `.font` on a plain-text NSTextView (isRichText = false) restyles the
+        // whole document and forces a full layout pass, not just the typing attributes. Since
+        // updateNSView runs on every keystroke (each character re-renders the SwiftUI view),
+        // doing that unconditionally made the scroll position visibly jump while typing.
+        // Only touch these when they've actually changed (note switch, theme change).
+        if textView.font != font {
+            textView.font = font
+        }
+        if textView.textColor != textColor {
+            textView.textColor = textColor
+        }
+        if textView.insertionPointColor != accentColor {
+            textView.insertionPointColor = accentColor
+        }
         (textView as? ShortcutAwareTextView)?.shortcuts = shortcuts
         controller.textView = textView
     }
