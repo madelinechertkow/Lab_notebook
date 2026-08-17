@@ -45,9 +45,19 @@ struct SettingsView: View {
     @EnvironmentObject var shortcuts: ShortcutStore
     @EnvironmentObject var appleCalendar: AppleCalendarService
     @State private var showingShortcutManager = false
+    @State private var showingManual = false
 
     var body: some View {
         Form {
+            Section("Manual") {
+                Button("Open Manual…") {
+                    showingManual = true
+                }
+                Text("An in-depth guide to every feature, with keyboard shortcuts.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Calendar") {
                 Toggle("Automatically add scheduled experiments to Apple Calendar", isOn: Binding(
                     get: { store.syncToAppleCalendar },
@@ -140,6 +150,9 @@ struct SettingsView: View {
         .frame(width: 440, height: 620)
         .sheet(isPresented: $showingShortcutManager) {
             ShortcutManagerView()
+        }
+        .sheet(isPresented: $showingManual) {
+            ManualView()
         }
     }
 
