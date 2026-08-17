@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Shared well-grid component — used both to edit a `PlateMapTemplate`'s default layout in
 /// the library and to edit a `PlateMapInstance` embedded in a note. Identical either way:
@@ -8,6 +9,13 @@ struct PlateMapGridView: View {
     let size: PlateSize
     @Binding var wells: [String: WellAnnotation]
 
+    /// Wells currently selected for a shared edit. A plain click replaces this with just
+    /// that well; ⌘-click toggles a well in/out; ⇧-click selects the rectangle between the
+    /// last-touched well and the clicked one — the same conventions as Finder icon view.
+    @State private var selection: Set<String> = []
+    @State private var anchorCoordinate: String?
+    /// Which well's popover is currently open (the visual anchor point); the popover itself
+    /// edits every coordinate in `selection`, not just this one.
     @State private var editingCoordinate: String?
 
     private var columns: [GridItem] {
@@ -25,24 +33,25 @@ struct PlateMapGridView: View {
     @ViewBuilder
     private func wellCell(_ coordinate: String) -> some View {
         let annotation = wells[coordinate] ?? WellAnnotation()
+        let isSelected = selection.contains(coordinate)
         Button {
-            editingCoordinate = coordinate
+            handleClick(coordinate)
         } label: {
             ZStack {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(annotation.colorHex.map { Color(hex: $0) } ?? theme.editorBackground)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(theme.divider, lineWidth: 1)
+                            .stroke(isSelected ? theme.accentDeep : theme.divider, lineWidth: isSelected ? 2.5 : 1)
                     )
                 VStack(spacing: 2) {
                     Text(coordinate)
-                        .font(.system(size: 8))
-                        .foregroundStyle(theme.textTertiary)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(coordinateColor(annotation))
                     if !annotation.label.isEmpty {
                         Text(annotation.label)
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(theme.textPrimary)
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(labelColor(annotation))
                             .lineLimit(2)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 2)
@@ -54,58 +63,140 @@ struct PlateMapGridView: View {
         .aspectRatio(1, contentMode: .fit)
         .popover(isPresented: Binding(
             get: { editingCoordinate == coordinate },
-            set: { if !$0 { editingCoordinate = nil } }
+            set: { presented in
+                if !presented {
+                    editingCoordinate = nil
+                    selection = []
+                }
+            }
         )) {
-            WellEditorPopover(
-                coordinate: coordinate,
-                annotation: Binding(
-                    get: { wells[coordinate] ?? WellAnnotation() },
-                    set: { wells[coordinate] = $0.isEmpty ? nil : $0 }
-                )
-            )
+            WellEditorPopover(coordinates: selection.isEmpty ? [coordinate] : selection.sorted(), wells: $wells)
         }
+    }
+
+    /// A well's own color, readable against whatever fill it has (or plain text color for
+    /// an unfilled well) — labels were reading as near-invisible on some of the darker/more
+    /// saturated fills before this.
+    private func labelColor(_ annotation: WellAnnotation) -> Color {
+        annotation.colorHex.map { Color(hex: $0).readableForeground } ?? theme.textPrimary
+    }
+
+    private func coordinateColor(_ annotation: WellAnnotation) -> Color {
+        annotation.colorHex.map { Color(hex: $0).readableForeground.opacity(0.75) } ?? theme.textTertiary
+    }
+
+    private func handleClick(_ coordinate: String) {
+        let flags = NSEvent.modifierFlags
+        if flags.contains(.shift), let anchor = anchorCoordinate {
+            selection = Self.rectangleRange(from: anchor, to: coordinate, size: size)
+            editingCoordinate = nil
+        } else if flags.contains(.command) {
+            if selection.contains(coordinate) {
+                selection.remove(coordinate)
+            } else {
+                selection.insert(coordinate)
+            }
+            anchorCoordinate = coordinate
+            editingCoordinate = nil
+        } else {
+            if !(selection.contains(coordinate) && selection.count > 1) {
+                selection = [coordinate]
+            }
+            anchorCoordinate = coordinate
+            editingCoordinate = coordinate
+        }
+    }
+
+    /// All well coordinates in the rectangle spanned by two corners, inclusive.
+    private static func rectangleRange(from a: String, to b: String, size: PlateSize) -> Set<String> {
+        guard let start = parse(a), let end = parse(b) else { return [b] }
+        let rows = min(start.row, end.row)...max(start.row, end.row)
+        let cols = min(start.col, end.col)...max(start.col, end.col)
+        var result: Set<String> = []
+        for row in rows {
+            let rowLetter = String(UnicodeScalar(65 + row)!)
+            for col in cols {
+                result.insert("\(rowLetter)\(col + 1)")
+            }
+        }
+        return result
+    }
+
+    private static func parse(_ coordinate: String) -> (row: Int, col: Int)? {
+        guard let first = coordinate.first, let rowAscii = first.asciiValue else { return nil }
+        guard let col = Int(coordinate.dropFirst()) else { return nil }
+        return (Int(rowAscii) - 65, col - 1)
     }
 }
 
+/// Edits one or more wells at once — every field applies identically to all `coordinates`,
+/// so selecting a block of wells and setting a label/color names and colors them together.
 private struct WellEditorPopover: View {
-    let coordinate: String
-    @Binding var annotation: WellAnnotation
-    @State private var colorEnabled: Bool
+    let coordinates: [String]
+    @Binding var wells: [String: WellAnnotation]
 
-    init(coordinate: String, annotation: Binding<WellAnnotation>) {
-        self.coordinate = coordinate
-        self._annotation = annotation
-        self._colorEnabled = State(initialValue: annotation.wrappedValue.colorHex != nil)
+    private var title: String {
+        coordinates.count == 1 ? "Well \(coordinates[0])" : "\(coordinates.count) Wells (\(coordinates.first!)–\(coordinates.last!))"
+    }
+
+    /// Seeds from the first selected well and writes through to every selected well on
+    /// every keystroke — no separate "apply" step.
+    private var labelBinding: Binding<String> {
+        Binding(
+            get: { coordinates.first.flatMap { wells[$0]?.label } ?? "" },
+            set: { newValue in applyToAll { $0.label = newValue } }
+        )
+    }
+
+    private var notesBinding: Binding<String> {
+        Binding(
+            get: { coordinates.first.flatMap { wells[$0]?.notes } ?? "" },
+            set: { newValue in applyToAll { $0.notes = newValue } }
+        )
+    }
+
+    private var hasColor: Bool {
+        coordinates.first.flatMap { wells[$0]?.colorHex } != nil
+    }
+
+    private var colorBinding: Binding<Color> {
+        Binding(
+            get: { Color(hex: (coordinates.first.flatMap { wells[$0]?.colorHex }) ?? 0xCCCCCC) },
+            set: { newColor in applyToAll { $0.colorHex = newColor.toHex() } }
+        )
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Well \(coordinate)").font(.headline)
+            Text(title).font(.headline)
 
-            TextField("Label", text: $annotation.label)
+            TextField("Label", text: labelBinding)
                 .textFieldStyle(.roundedBorder)
 
-            Toggle("Color", isOn: $colorEnabled)
-                .onChange(of: colorEnabled) { enabled in
-                    if !enabled {
-                        annotation.colorHex = nil
-                    } else if annotation.colorHex == nil {
-                        annotation.colorHex = 0xCCCCCC
+            HStack {
+                ColorPicker("Color", selection: colorBinding)
+                if hasColor {
+                    Button("Clear") {
+                        applyToAll { $0.colorHex = nil }
                     }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
                 }
-
-            if colorEnabled {
-                ColorPicker("Well color", selection: Binding(
-                    get: { Color(hex: annotation.colorHex ?? 0xCCCCCC) },
-                    set: { annotation.colorHex = $0.toHex() }
-                ))
             }
 
-            TextField("Notes", text: $annotation.notes)
+            TextField("Notes", text: notesBinding)
                 .textFieldStyle(.roundedBorder)
         }
         .padding(16)
-        .frame(width: 240)
+        .frame(width: 260)
+    }
+
+    private func applyToAll(_ transform: (inout WellAnnotation) -> Void) {
+        for coordinate in coordinates {
+            var annotation = wells[coordinate] ?? WellAnnotation()
+            transform(&annotation)
+            wells[coordinate] = annotation.isEmpty ? nil : annotation
+        }
     }
 }
 

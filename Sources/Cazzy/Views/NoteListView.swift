@@ -18,7 +18,7 @@ struct NoteListView: View {
     @EnvironmentObject var theme: ThemeStore
     var sidebarSelection: SidebarItem?
     @Binding var selectedNoteID: UUID?
-    @State private var searchText: String = ""
+    @Binding var searchText: String
     @State private var contentTab: NotebookContentTab = .notes
     @State private var relinkTarget: LinkedFile?
     @State private var isDropTargeting: Bool = false
@@ -358,8 +358,13 @@ struct NoteListView: View {
 }
 
 struct NoteRow: View {
+    @EnvironmentObject var store: NoteStore
     @EnvironmentObject var theme: ThemeStore
     let note: Note
+
+    private var notebookName: String {
+        store.notebooks.first(where: { $0.id == note.notebookID })?.name ?? ""
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -368,8 +373,8 @@ struct NoteRow: View {
                 .foregroundStyle(theme.textPrimary)
                 .lineLimit(1)
 
-            if !note.preview.isEmpty {
-                Text(note.preview)
+            if !notebookName.isEmpty {
+                Text(notebookName)
                     .font(theme.bodyFont(12))
                     .foregroundStyle(theme.textSecondary)
                     .lineLimit(1)

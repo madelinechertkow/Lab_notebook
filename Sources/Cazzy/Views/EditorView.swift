@@ -170,7 +170,7 @@ struct EditorView: View {
                 FormattingTextEditor(
                     text: $content,
                     controller: controller,
-                    font: nsFont(for: theme.theme.bodyFont, size: 14),
+                    font: nsFont(for: theme.theme.bodyFont, size: 14 * theme.fontScale),
                     textColor: NSColor(theme.textPrimary),
                     accentColor: NSColor(theme.accentDeep),
                     shortcuts: shortcuts.shortcuts

@@ -102,6 +102,7 @@ struct FormattingTextEditor: NSViewRepresentable {
         let textView = ShortcutAwareTextView()
         textView.shortcuts = shortcuts
         textView.delegate = context.coordinator
+        textView.layoutManager?.delegate = context.coordinator
         textView.string = text
         textView.font = font
         textView.textColor = textColor
@@ -117,6 +118,18 @@ struct FormattingTextEditor: NSViewRepresentable {
         textView.isHorizontallyResizable = false
         textView.textContainer?.widthTracksTextView = true
         textView.insertionPointColor = accentColor
+        // Gives this text view AppKit's own native find bar (same one TextEdit/Xcode use —
+        // highlighting, match count, Next/Previous) the first time a find action reaches it,
+        // with no custom UI needed. Wired up via performTextFinderAction: from CazzyApp's ⌘F.
+        textView.usesFindBar = true
+        // Without this, matches only flash briefly (a "find indicator") as you move between
+        // them instead of staying highlighted — this keeps every match highlighted the whole
+        // time the find bar is active, which is what was asked for.
+        textView.isIncrementalSearchingEnabled = true
+        // The "current" match during a find is just a regular text selection under the hood,
+        // so theming it (rather than leaving AppKit's default system blue) is what makes it
+        // match the app's palette instead of looking out of place.
+        textView.selectedTextAttributes = [.backgroundColor: accentColor.withAlphaComponent(0.55)]
 
         let scrollView = NSScrollView()
         scrollView.documentView = textView
@@ -129,6 +142,11 @@ struct FormattingTextEditor: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
+        // Keeps the coordinator's copy of `accentColor` current for its layoutManager
+        // delegate callback below, which fires later/async during drawing and would
+        // otherwise keep using whatever color was live the one time makeCoordinator() ran.
+        context.coordinator.parent = self
+
         guard let textView = nsView.documentView as? NSTextView else { return }
         if textView.string != text {
             textView.string = text
@@ -146,6 +164,7 @@ struct FormattingTextEditor: NSViewRepresentable {
         }
         if textView.insertionPointColor != accentColor {
             textView.insertionPointColor = accentColor
+            textView.selectedTextAttributes = [.backgroundColor: accentColor.withAlphaComponent(0.55)]
         }
         (textView as? ShortcutAwareTextView)?.shortcuts = shortcuts
         controller.textView = textView
@@ -155,13 +174,29 @@ struct FormattingTextEditor: NSViewRepresentable {
         Coordinator(self)
     }
 
-    final class Coordinator: NSObject, NSTextViewDelegate {
+    final class Coordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDelegate {
         var parent: FormattingTextEditor
         init(_ parent: FormattingTextEditor) { self.parent = parent }
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
+        }
+
+        /// Recolors the temporary background AppKit paints behind every find/incremental-
+        /// search match (normally a fixed system yellow) to the app's own accent color, so
+        /// it matches whichever theme is active instead of clashing with it.
+        func layoutManager(
+            _ layoutManager: NSLayoutManager,
+            shouldUseTemporaryAttributes attrs: [NSAttributedString.Key: Any] = [:],
+            forDrawingToScreen toScreen: Bool,
+            atCharacterIndex charIndex: Int,
+            effectiveRange effectiveCharRange: NSRangePointer?
+        ) -> [NSAttributedString.Key: Any]? {
+            guard attrs[.backgroundColor] != nil else { return nil }
+            var replaced = attrs
+            replaced[.backgroundColor] = parent.accentColor.withAlphaComponent(0.28)
+            return replaced
         }
     }
 }

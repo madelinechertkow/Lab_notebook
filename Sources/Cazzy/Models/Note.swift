@@ -188,18 +188,6 @@ struct Note: Identifiable, Codable, Equatable {
         isArchived = try container.decodeIfPresent(Bool.self, forKey: .isArchived) ?? false
     }
 
-    var preview: String {
-        let stripped = replaceGreekLetterCommands(replaceFractionNotation(content))
-            .replacingOccurrences(of: "#", with: "")
-            .replacingOccurrences(of: "*", with: "")
-            .replacingOccurrences(of: "- [ ] ", with: "")
-            .replacingOccurrences(of: "- [x] ", with: "")
-            .replacingOccurrences(of: "`", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let firstLine = stripped.split(separator: "\n").first.map(String.init) ?? ""
-        return firstLine
-    }
-
     var wordCount: Int {
         content.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
     }

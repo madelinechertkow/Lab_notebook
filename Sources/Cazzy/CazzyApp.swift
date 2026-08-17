@@ -3,11 +3,32 @@ import AppKit
 
 final class CazzyAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Swift Package executables aren't launched via LaunchServices as a real .app bundle,
-        // so without this the window renders but never becomes key and can't receive keystrokes.
+        // Swift Package executables run directly (e.g. `swift run`, or the raw debug binary)
+        // aren't launched via LaunchServices as a real .app bundle, so without this the
+        // window renders but never becomes key and can't receive keystrokes. A properly
+        // bundled/codesigned Cazzy.app is already activated normally by LaunchServices, so
+        // this is skipped there.
+        guard Bundle.main.bundleURL.pathExtension != "app" else { return }
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
+
+    // Deliberately no applicationShouldHandleReopen override: a properly bundled WindowGroup
+    // app already reopens its last-closed window on a Dock click via AppKit's own default
+    // handling. A custom override here (opening the window ourselves whenever
+    // hasVisibleWindows read false) was running *in addition to* that default behavior rather
+    // than replacing it, which is what was producing two windows from a single click.
+}
+
+/// Sends a standard Cocoa find action to whichever view is first responder — normally the
+/// note editor's NSTextView. SwiftUI's Commands are closure-based and can't target an
+/// Objective-C selector directly, so this goes through `NSApp.sendAction`, the same
+/// mechanism a NIB-based "Find…" menu item uses (the action reads `tag` off `sender` to
+/// know which `NSTextFinder.Action` to perform).
+private func performTextFinderAction(_ action: NSTextFinder.Action) {
+    let sender = NSMenuItem()
+    sender.tag = action.rawValue
+    NSApp.sendAction(#selector(NSTextView.performTextFinderAction(_:)), to: nil, from: sender)
 }
 
 @main
@@ -41,6 +62,29 @@ struct CazzyApp: App {
                     .keyboardShortcut("z", modifiers: .command)
                 Button("Redo") { store.redo() }
                     .keyboardShortcut("z", modifiers: [.command, .shift])
+            }
+            // Find within the currently-open entry — routes to AppKit's own NSTextFinder on
+            // whichever NSTextView is focused (see `usesFindBar` in FormattingTextEditor),
+            // the same native find bar TextEdit and Xcode use, so highlighting, match count,
+            // and Next/Previous all come for free.
+            CommandGroup(after: .textEditing) {
+                Button("Find") { performTextFinderAction(.showFindInterface) }
+                    .keyboardShortcut("f", modifiers: .command)
+                Button("Find Next") { performTextFinderAction(.nextMatch) }
+                    .keyboardShortcut("g", modifiers: .command)
+                Button("Find Previous") { performTextFinderAction(.previousMatch) }
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
+            }
+            // App-wide text zoom, mirroring the ⌘+/⌘- convention Safari, Mail, etc. use.
+            // Declared once here (rather than per-window) since a single process has one
+            // shared menu bar — the same reason Undo/Redo above already reaches every window.
+            CommandGroup(after: .toolbar) {
+                Button("Increase Font Size") { themeStore.increaseFontScale() }
+                    .keyboardShortcut("+", modifiers: .command)
+                Button("Decrease Font Size") { themeStore.decreaseFontScale() }
+                    .keyboardShortcut("-", modifiers: .command)
+                Button("Actual Size") { themeStore.resetFontScale() }
+                    .keyboardShortcut("0", modifiers: .command)
             }
         }
 

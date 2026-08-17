@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var selectedLadderID: UUID?
     @State private var selectedPaperEntryID: PaperEntry.ID?
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
+    @State private var noteSearchText: String = ""
 
     var body: some View {
         NavigationSplitView(columnVisibility: $splitViewVisibility) {
@@ -29,7 +30,7 @@ struct ContentView: View {
                 PaperTrackerView(selectedEntryID: $selectedPaperEntryID)
                     .navigationSplitViewColumnWidth(min: 700, ideal: 900)
             } else {
-                NoteListView(sidebarSelection: sidebarSelection, selectedNoteID: $selectedNoteID)
+                NoteListView(sidebarSelection: sidebarSelection, selectedNoteID: $selectedNoteID, searchText: $noteSearchText)
                     .navigationSplitViewColumnWidth(min: 260, ideal: 300)
             }
         } detail: {

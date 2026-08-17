@@ -198,6 +198,15 @@ struct CalendarView: View {
             .foregroundStyle(theme.accentDeep)
 
             Button {
+                openWindow(id: "todo")
+            } label: {
+                Label("To-Do List", systemImage: "checklist")
+                    .font(theme.bodyFont(12, weight: .medium))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(theme.accentDeep)
+
+            Button {
                 sheetContext = .create(start: defaultNewSlot, prefilledProtocol: nil)
             } label: {
                 Label("New Experiment", systemImage: "plus")
@@ -261,9 +270,12 @@ private struct DayHeader: View {
 
     let day: Date
     @State private var showingNotes = false
+    @State private var showingTodos = false
+    @State private var newTodoText = ""
 
     private var isToday: Bool { Calendar.current.isDateInToday(day) }
     private var dayNotes: [Note] { store.notes(createdOn: day) }
+    private var dayTodos: [TodoItem] { store.todos(on: day) }
 
     var body: some View {
         VStack(spacing: 2) {
@@ -288,8 +300,65 @@ private struct DayHeader: View {
                         notesPopover
                     }
                 }
+                Button {
+                    showingTodos = true
+                } label: {
+                    Image(systemName: dayTodos.isEmpty ? "checklist" : (dayTodos.allSatisfy(\.isDone) ? "checkmark.circle.fill" : "checklist"))
+                        .font(.system(size: 9))
+                        .foregroundStyle(dayTodos.isEmpty ? theme.textTertiary.opacity(0.5) : theme.accentDeep)
+                }
+                .buttonStyle(.plain)
+                .help("To-dos for this day")
+                .popover(isPresented: $showingTodos) {
+                    todosPopover
+                }
             }
         }
+    }
+
+    private var todosPopover: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("To-Do — \(dayNumberText) \(weekdayText)")
+                .font(theme.bodyFont(11, weight: .semibold))
+                .foregroundStyle(theme.textSecondary)
+            if dayTodos.isEmpty {
+                Text("Nothing for this day yet.")
+                    .font(theme.bodyFont(12))
+                    .foregroundStyle(theme.textTertiary)
+            } else {
+                ForEach(dayTodos) { item in
+                    HStack(spacing: 6) {
+                        Button {
+                            store.toggleTodo(item)
+                        } label: {
+                            Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 12))
+                                .foregroundStyle(item.isDone ? theme.accentDeep : theme.textSecondary)
+                        }
+                        .buttonStyle(.plain)
+                        Text(item.text)
+                            .font(theme.bodyFont(12))
+                            .foregroundStyle(item.isDone ? theme.textTertiary : theme.textPrimary)
+                            .strikethrough(item.isDone, color: theme.textTertiary)
+                    }
+                }
+            }
+            Divider().overlay(theme.divider)
+            HStack(spacing: 6) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.accentDeep)
+                TextField("Add a task", text: $newTodoText)
+                    .textFieldStyle(.plain)
+                    .font(theme.bodyFont(12))
+                    .onSubmit {
+                        store.addTodo(newTodoText, date: day)
+                        newTodoText = ""
+                    }
+            }
+        }
+        .padding(12)
+        .frame(minWidth: 220, alignment: .leading)
     }
 
     private var notesPopover: some View {

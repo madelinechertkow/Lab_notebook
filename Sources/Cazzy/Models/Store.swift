@@ -396,64 +396,6 @@ final class NoteStore: ObservableObject {
         save()
     }
 
-    func addTodo(_ text: String, weekday: Weekday = .today) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        todos.append(TodoItem(text: trimmed, weekday: weekday))
-        save()
-    }
-
-    func toggleTodo(_ item: TodoItem) {
-        guard let idx = todos.firstIndex(where: { $0.id == item.id }) else { return }
-        todos[idx].isDone.toggle()
-        save()
-    }
-
-    func deleteTodo(_ item: TodoItem) {
-        todos.removeAll { $0.id == item.id }
-        save()
-    }
-
-    func setTodoWeekday(_ item: TodoItem, weekday: Weekday) {
-        guard let idx = todos.firstIndex(where: { $0.id == item.id }) else { return }
-        todos[idx].weekday = weekday
-        save()
-    }
-
-    func todos(for weekday: Weekday) -> [TodoItem] {
-        todos.filter { $0.weekday == weekday }
-    }
-
-    func addSubtask(_ text: String, to item: TodoItem) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        guard let idx = todos.firstIndex(where: { $0.id == item.id }) else { return }
-        todos[idx].subtasks.append(Subtask(text: trimmed))
-        save()
-    }
-
-    func toggleSubtask(_ subtask: Subtask, in item: TodoItem) {
-        guard let idx = todos.firstIndex(where: { $0.id == item.id }),
-              let subIdx = todos[idx].subtasks.firstIndex(where: { $0.id == subtask.id }) else { return }
-        todos[idx].subtasks[subIdx].isDone.toggle()
-        save()
-    }
-
-    func deleteSubtask(_ subtask: Subtask, from item: TodoItem) {
-        guard let idx = todos.firstIndex(where: { $0.id == item.id }) else { return }
-        todos[idx].subtasks.removeAll { $0.id == subtask.id }
-        save()
-    }
-
-    func clearCompletedTodos(weekday: Weekday? = nil) {
-        if let weekday {
-            todos.removeAll { $0.isDone && $0.weekday == weekday }
-        } else {
-            todos.removeAll { $0.isDone }
-        }
-        save()
-    }
-
     func allTags() -> [String] {
         let visibleIDs = Set(visibleNotebooks().map { $0.id })
         return Array(Set(notes.filter { visibleIDs.contains($0.notebookID) }.flatMap { $0.tags })).sorted()

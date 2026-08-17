@@ -38,6 +38,16 @@ final class ThemeStore: ObservableObject {
         }
     }
 
+    /// App-wide text zoom, adjusted with ⌘+ / ⌘− (see `increaseFontScale`/`decreaseFontScale`).
+    /// Multiplies every size passed through `displayFont`/`bodyFont`, so it scales the whole
+    /// app's text uniformly rather than needing every view to opt in individually.
+    @Published var fontScale: CGFloat {
+        didSet { UserDefaults.standard.set(Double(fontScale), forKey: "fontScale") }
+    }
+
+    private static let fontScaleRange: ClosedRange<CGFloat> = 0.75...1.75
+    private static let fontScaleStep: CGFloat = 0.1
+
     private var lightTheme: AppTheme
     private var darkTheme: AppTheme
     private let fileURL: URL
@@ -65,6 +75,11 @@ final class ThemeStore: ObservableObject {
         lightTheme = loaded.lightTheme
         darkTheme = loaded.darkTheme
         systemIsDark = initialSystemIsDark
+        if UserDefaults.standard.object(forKey: "fontScale") != nil {
+            fontScale = CGFloat(UserDefaults.standard.double(forKey: "fontScale"))
+        } else {
+            fontScale = 1.0
+        }
 
         let startDark = loaded.mode == .dark || (loaded.mode == .auto && initialSystemIsDark)
         theme = startDark ? loaded.darkTheme : loaded.lightTheme
@@ -143,11 +158,23 @@ final class ThemeStore: ObservableObject {
     // MARK: - Fonts
 
     func displayFont(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
-        theme.displayFont.font(size: size, weight: weight)
+        theme.displayFont.font(size: size * fontScale, weight: weight)
     }
 
     func bodyFont(_ size: CGFloat = 14, weight: Font.Weight = .regular) -> Font {
-        theme.bodyFont.font(size: size, weight: weight)
+        theme.bodyFont.font(size: size * fontScale, weight: weight)
+    }
+
+    func increaseFontScale() {
+        fontScale = min(Self.fontScaleRange.upperBound, fontScale + Self.fontScaleStep)
+    }
+
+    func decreaseFontScale() {
+        fontScale = max(Self.fontScaleRange.lowerBound, fontScale - Self.fontScaleStep)
+    }
+
+    func resetFontScale() {
+        fontScale = 1.0
     }
 }
 
