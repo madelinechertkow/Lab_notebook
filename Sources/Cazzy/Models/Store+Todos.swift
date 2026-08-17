@@ -13,6 +13,13 @@ extension NoteStore {
     func toggleTodo(_ item: TodoItem) {
         guard let idx = todos.firstIndex(where: { $0.id == item.id }) else { return }
         todos[idx].isDone.toggle()
+        // Completing the main task implies its subtasks are done too; un-completing it
+        // leaves their individual progress alone rather than resetting it.
+        if todos[idx].isDone {
+            for subIdx in todos[idx].subtasks.indices {
+                todos[idx].subtasks[subIdx].isDone = true
+            }
+        }
         save()
     }
 
@@ -21,9 +28,10 @@ extension NoteStore {
         save()
     }
 
-    func setTodoDate(_ item: TodoItem, date: Date) {
-        guard let idx = todos.firstIndex(where: { $0.id == item.id }) else { return }
-        todos[idx].date = Calendar.current.startOfDay(for: date)
+    func updateTodoText(_ item: TodoItem, text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let idx = todos.firstIndex(where: { $0.id == item.id }) else { return }
+        todos[idx].text = trimmed
         save()
     }
 

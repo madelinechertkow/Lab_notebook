@@ -345,14 +345,24 @@ private struct TodoRow: View {
     @State private var isHovering = false
     @State private var isExpanded = false
     @State private var newSubtaskText = ""
+    @State private var isEditingText = false
+    @State private var editedText = ""
+    @FocusState private var isTextFieldFocused: Bool
 
     private var doneSubtaskCount: Int { item.subtasks.filter(\.isDone).count }
 
-    private var dateBinding: Binding<Date> {
-        Binding(
-            get: { item.date },
-            set: { store.setTodoDate(item, date: $0) }
-        )
+    private func startEditing() {
+        editedText = item.text
+        isEditingText = true
+        isTextFieldFocused = true
+    }
+
+    private func commitEdit() {
+        let trimmed = editedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            store.updateTodoText(item, text: trimmed)
+        }
+        isEditingText = false
     }
 
     var body: some View {
@@ -389,10 +399,23 @@ private struct TodoRow: View {
                     .buttonStyle(.plain)
                 }
 
-                Text(item.text)
-                    .font(theme.bodyFont(13))
-                    .foregroundStyle(item.isDone ? theme.textTertiary : theme.textPrimary)
-                    .strikethrough(item.isDone, color: theme.textTertiary)
+                if isEditingText {
+                    TextField("", text: $editedText)
+                        .textFieldStyle(.plain)
+                        .font(theme.bodyFont(13))
+                        .focused($isTextFieldFocused)
+                        .onSubmit { commitEdit() }
+                        .onChange(of: isTextFieldFocused) { focused in
+                            if !focused { commitEdit() }
+                        }
+                } else {
+                    Text(item.text)
+                        .font(theme.bodyFont(13))
+                        .foregroundStyle(item.isDone ? theme.textTertiary : theme.textPrimary)
+                        .strikethrough(item.isDone, color: theme.textTertiary)
+                        .contentShape(Rectangle())
+                        .onTapGesture { startEditing() }
+                }
 
                 if !item.subtasks.isEmpty {
                     Text("\(doneSubtaskCount)/\(item.subtasks.count)")
@@ -401,12 +424,6 @@ private struct TodoRow: View {
                 }
 
                 Spacer()
-
-                DatePicker("", selection: dateBinding, displayedComponents: .date)
-                    .datePickerStyle(.compact)
-                    .labelsHidden()
-                    .font(theme.bodyFont(10, weight: .medium))
-                    .fixedSize()
 
                 if isHovering {
                     Button {
