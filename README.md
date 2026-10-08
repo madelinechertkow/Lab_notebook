@@ -46,3 +46,12 @@ section above for what to tell them about the Gatekeeper prompt.
 ## Data storage
 
 Data is stored as a single JSON blob in `~/Library/Application Support/Cazzy/data.json`.
+
+### Box backup
+
+Settings → **Box Backup** mirrors every entry into a folder you choose (normally
+inside Box Drive, `~/Library/CloudStorage/Box-Box`) as
+`<Notebook>/<yyyy-MM-dd> <Title>.md`, with inserted images in
+`<Notebook>/images/`. Box Drive does the uploading — no Box API credentials are
+involved. Changed entries are rewritten a few seconds after you stop typing;
+renamed entries have their file moved; deleted entries keep their backup file.

@@ -58,6 +58,8 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            BoxBackupSection(store: store, backup: store.boxBackup)
+
             Section("Calendar") {
                 Toggle("Automatically add scheduled experiments to Apple Calendar", isOn: Binding(
                     get: { store.syncToAppleCalendar },
@@ -206,6 +208,88 @@ struct SettingsView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+/// Settings for mirroring every note into a Box Drive folder as Markdown. Observes the
+/// backup service directly (it isn't an environment object) so status updates live.
+private struct BoxBackupSection: View {
+    let store: NoteStore
+    @ObservedObject var backup: BoxBackupService
+
+    var body: some View {
+        Section("Box Backup") {
+            Toggle("Back up all entries to Box", isOn: Binding(
+                get: { backup.isEnabled },
+                set: { enabled in
+                    if enabled && backup.folderURL == nil {
+                        guard chooseFolder() else { return }
+                    }
+                    backup.setEnabled(enabled)
+                    if enabled { backup.backUpNow(notes: store.notes, notebooks: store.notebooks) }
+                }
+            ))
+            HStack {
+                Text(backup.folderURL.map(displayPath) ?? "No folder chosen")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+                Button("Choose Folder…") {
+                    if chooseFolder(), backup.isEnabled {
+                        backup.backUpNow(notes: store.notes, notebooks: store.notebooks)
+                    }
+                }
+            }
+            HStack {
+                statusText
+                Spacer()
+                Button("Back Up Now") {
+                    backup.backUpNow(notes: store.notes, notebooks: store.notebooks)
+                }
+                .disabled(backup.folderURL == nil || backup.isBackingUp)
+            }
+            Text("Each entry is saved as a Markdown file in a subfolder per notebook, and Box Drive uploads it. Changes are backed up a few seconds after you stop typing. Deleting an entry here doesn't delete its backup.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var statusText: some View {
+        if backup.isBackingUp {
+            Text("Backing up…").font(.system(size: 11)).foregroundStyle(.secondary)
+        } else if let error = backup.lastError {
+            Text(error).font(.system(size: 11)).foregroundStyle(.red)
+        } else if let date = backup.lastBackupAt {
+            Text("Last backed up \(date.formatted(date: .omitted, time: .shortened))")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Shows the folder relative to the Box root ("Box › Lab › Notebook") when it's inside Box Drive.
+    private func displayPath(_ url: URL) -> String {
+        let root = BoxBackupService.boxDriveRoot.path
+        guard url.path.hasPrefix(root) else { return url.path }
+        let rest = url.path.dropFirst(root.count).split(separator: "/")
+        return (["Box"] + rest).joined(separator: " › ")
+    }
+
+    /// Returns false if the user cancelled.
+    private func chooseFolder() -> Bool {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Back Up Here"
+        panel.message = "Choose a folder inside Box to back up your Cazzy entries to."
+        panel.directoryURL = backup.folderURL
+            ?? (FileManager.default.fileExists(atPath: BoxBackupService.boxDriveRoot.path) ? BoxBackupService.boxDriveRoot : nil)
+        guard panel.runModal() == .OK, let url = panel.url else { return false }
+        backup.setFolder(url)
+        return true
     }
 }
 

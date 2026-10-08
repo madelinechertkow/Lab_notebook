@@ -33,6 +33,9 @@ final class NoteStore: ObservableObject {
     /// of silently working atop freshly-seeded sample data.
     @Published private(set) var dataRecoveryNotice: String?
 
+    /// Mirrors notes into a Box Drive folder as Markdown after each save (see BoxBackupService).
+    let boxBackup = BoxBackupService()
+
     private let fileURL: URL
 
     // Whole-state snapshots make undo trivially correct for every mutation because all
@@ -55,6 +58,8 @@ final class NoteStore: ObservableObject {
         }
         self.syncToAppleCalendar = UserDefaults.standard.bool(forKey: "syncToAppleCalendar")
         load()
+        // Catch up on anything that changed while backup was off or the folder was unreachable.
+        boxBackup.scheduleBackup(notes: notes, notebooks: notebooks)
     }
 
     func setLabModeFilter(_ mode: LabModeFilter) {
@@ -246,6 +251,7 @@ final class NoteStore: ObservableObject {
         guard let data = try? JSONEncoder().encode(state) else { return }
         try? data.write(to: fileURL, options: .atomic)
         lastSavedState = state
+        boxBackup.scheduleBackup(notes: state.notes, notebooks: state.notebooks)
     }
 
     // MARK: - Undo / Redo (⌘Z / ⇧⌘Z, app-wide)
