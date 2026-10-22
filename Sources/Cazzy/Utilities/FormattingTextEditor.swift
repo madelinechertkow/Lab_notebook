@@ -47,6 +47,21 @@ final class EditorController: ObservableObject {
         textView.didChangeText()
     }
 
+    /// The currently highlighted range and its text, or nil when nothing is highlighted.
+    var selection: (range: NSRange, text: String)? {
+        guard let textView, let storage = textView.textStorage else { return nil }
+        let range = textView.selectedRange()
+        guard range.length > 0 else { return nil }
+        return (range, (storage.string as NSString).substring(with: range))
+    }
+
+    /// Replaces `range` with `text`, leaving the cursor right after it.
+    func replace(_ range: NSRange, with text: String) {
+        guard let textView else { return }
+        textView.insertText(text, replacementRange: range)
+        textView.didChangeText()
+    }
+
     func prefixCurrentLines(with prefix: String) {
         guard let textView, let storage = textView.textStorage else { return }
         let nsString = storage.string as NSString

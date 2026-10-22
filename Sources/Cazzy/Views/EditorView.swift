@@ -133,7 +133,8 @@ struct EditorView: View {
                     specialCharacters: shortcuts.shortcuts,
                     onInsertPlateMap: insertPlateMap,
                     onInsertGelMap: { imagePickerTarget = .gelMap },
-                    onInsertImage: { imagePickerTarget = .inlineImage }
+                    onInsertImage: { imagePickerTarget = .inlineImage },
+                    onLinkFile: linkFile
                 )
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
@@ -166,6 +167,7 @@ struct EditorView: View {
                         persist()
                     }
                 )
+                .environment(\.openURL, OpenURLAction(handler: openNoteLink))
             } else {
                 FormattingTextEditor(
                     text: $content,
@@ -290,6 +292,58 @@ struct EditorView: View {
         persist()
     }
 
+    /// Turns the highlighted text into a `[text](cazzy-file:...)` hyperlink (see
+    /// LinkedFile.noteLinkMarkdown). Nothing is highlighted → it asks the user to highlight
+    /// something first rather than inserting a link. The file itself stays where it is — it's
+    /// linked into this note's notebook, the same as the Files tab, and clicking the link in
+    /// Preview opens it from its original location. Uses a modal NSOpenPanel rather than the
+    /// view's `.fileImporter` (already spoken for by the image pickers, and images-only); being
+    /// modal also means the highlighted range can't be edited out from under it while it's open.
+    private func linkFile() {
+        guard let notebookID = currentNote?.notebookID else { return }
+        guard let selection = controller.selection,
+              !selection.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            showLinkError("Highlight some text first", "Select the words in your note that you want to turn into a link, then click Link file again.")
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.prompt = "Link"
+        panel.message = "Choose the file to link to \"\(selection.text)\". It stays in its original location."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let linked = try store.linkFileForNote(at: url, in: notebookID)
+            controller.replace(selection.range, with: linked.noteLinkMarkdown(label: selection.text))
+            persist()
+        } catch {
+            showLinkError("Couldn't link \"\(url.lastPathComponent)\"", error.localizedDescription)
+        }
+    }
+
+    /// Opens `cazzy-file:` links from Preview through their bookmark; every other link
+    /// (web pages, mailto:, plain file:// paths typed by hand) gets the system's default handling.
+    private func openNoteLink(_ url: URL) -> OpenURLAction.Result {
+        guard let id = LinkedFile.id(fromNoteLink: url) else { return .systemAction }
+        guard let file = store.linkedFile(withID: id) else {
+            showLinkError("This link's file was removed", "It was taken out of the notebook's Files tab. Link the file again from the note's toolbar.")
+            return .handled
+        }
+        if !store.openLinkedFile(file) {
+            showLinkError("Couldn't find \"\(file.fileName)\"", "It may have been moved or deleted. Use Relink… on it in the notebook's Files tab.")
+        }
+        return .handled
+    }
+
+    private func showLinkError(_ message: String, _ info: String) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = info
+        alert.alertStyle = .warning
+        alert.runModal()
+    }
+
     private func nsFont(for choice: FontChoice, size: CGFloat) -> NSFont {
         switch choice {
         case .serif:
@@ -376,6 +430,7 @@ struct FormattingToolbar: View {
     var onInsertPlateMap: (PlateMapTemplate?, PlateSize) -> Void = { _, _ in }
     var onInsertGelMap: () -> Void = {}
     var onInsertImage: () -> Void = {}
+    var onLinkFile: () -> Void = {}
 
     @State private var showingSpecialCharacters = false
 
@@ -398,6 +453,7 @@ struct FormattingToolbar: View {
                 Divider().frame(height: 14)
                 specialCharacterButton
                 toolButton("photo", "Insert image") { onInsertImage() }
+                toolButton("link", "Link file (highlight text first)") { onLinkFile() }
                 if allowsPlateGelMaps {
                     Divider().frame(height: 14)
                     plateMapMenu

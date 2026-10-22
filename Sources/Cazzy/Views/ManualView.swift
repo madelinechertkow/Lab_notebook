@@ -101,6 +101,7 @@ enum ManualContent {
     | **Checklist** | Adds a checkbox to the start of the current line(s) — renders as a real checkbox in Preview |
     | **Insert special character** | Opens a grid of your configured special-character shortcuts — click one to insert it |
     | **Insert image** | Copies a photo into the note as an inline image |
+    | **Link file** | Turns the highlighted text into a clickable link to a file on your Mac — see "Linked Files" |
     | **Insert plate map** / **Insert gel map** | Only shown in Wet Lab (or shared) notebooks — see their own topics |
 
     Bold/Italic/Code wrap whatever's currently selected; Heading/Bullet/Checklist apply to whichever line(s) your cursor or selection touches, and toggle back off if the line already has that prefix.
@@ -311,6 +312,12 @@ enum ManualContent {
     For files that need to keep living somewhere else — a thesis chapter still being drafted in Word, a large dataset, a shared PDF — rather than copying them into Cazzy, a notebook can **link** to them instead.
 
     Select a notebook, switch to its **Files** tab (next to Notes), and either drag files in or click the import button and choose them. A linked file always opens from its real, original location — edits made there (even from a totally different app) are what you see next time you open it from Cazzy.
+
+    ## Linking a file inside a note
+
+    To turn words in a note into a hyperlink to a file, highlight them while editing, click the **Link file** button (the chain-link icon) in the note's formatting toolbar, and choose the file. If nothing is highlighted, Cazzy asks you to highlight something first. The highlighted words become `[your words](cazzy-file:…)` — you can retype the words inside the square brackets later, but leave the part in parentheses alone. Switch to **Preview** and click the link to open the file from its original location.
+
+    A file linked this way also shows up in the notebook's **Files** tab, which is what keeps the link working if the file is moved. If you remove it from the Files tab, links to it in notes stop working until you link the file again.
 
     Right-click a linked file for **Open**, **Reveal in Finder**, or **Relink…** (if the file's moved and Cazzy can no longer find it — you'll see "File not found" in that case). Removing a link only removes it from the notebook; it never touches the actual file on disk.
     """

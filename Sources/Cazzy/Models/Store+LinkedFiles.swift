@@ -15,6 +15,21 @@ extension NoteStore {
         return linked
     }
 
+    /// Links a file for a hyperlink inside a note, reusing the notebook's existing entry for
+    /// that same file if there is one so linking it from several notes doesn't pile up
+    /// duplicates in the Files tab.
+    func linkFileForNote(at url: URL, in notebookID: UUID) throws -> LinkedFile {
+        let path = url.standardizedFileURL.path
+        if let existing = linkedFiles(in: notebookID).first(where: { resolvedURL(for: $0)?.standardizedFileURL.path == path }) {
+            return existing
+        }
+        return try linkFile(at: url, in: notebookID)
+    }
+
+    func linkedFile(withID id: UUID) -> LinkedFile? {
+        linkedFiles.first { $0.id == id }
+    }
+
     func removeLinkedFile(_ file: LinkedFile) {
         linkedFiles.removeAll { $0.id == file.id }
         save()
