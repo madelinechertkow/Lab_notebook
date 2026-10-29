@@ -80,6 +80,8 @@ enum ManualContent {
 
     ## Word count
 
+    While editing, misspelled words get a red underline. Right-click one to pick a suggested spelling, or choose **Learn Spelling** so Cazzy (and your Mac) stops flagging it — handy for gene, reagent, and cell-line names. Cazzy never changes a word on its own; spell check only points things out.
+
     The bottom of the editor always shows a live word count and when the note was last edited.
     """
 

@@ -128,6 +128,12 @@ struct FormattingTextEditor: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: 6, height: 10)
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
+        // Underlines misspellings (right-click one for suggestions, Learn Spelling, etc.) but
+        // never changes text on its own — gene, reagent, and cell-line names would constantly
+        // get "corrected" otherwise.
+        textView.isContinuousSpellCheckingEnabled = true
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
         textView.autoresizingMask = [.width]
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
