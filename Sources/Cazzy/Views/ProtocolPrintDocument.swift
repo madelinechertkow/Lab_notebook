@@ -63,6 +63,7 @@ struct ProtocolPrintView: View {
                     }
                     if !buffer.components.isEmpty {
                         HStack(spacing: 12) {
+                            Color.clear.frame(width: 8)
                             Text("Component").frame(width: 170, alignment: .leading)
                             Text("Stock").frame(width: 70, alignment: .leading)
                             Text("Final").frame(width: 70, alignment: .leading)
@@ -74,6 +75,7 @@ struct ProtocolPrintView: View {
                         ForEach(buffer.components) { component in
                             VStack(spacing: 0) {
                                 HStack(alignment: .top, spacing: 12) {
+                                    Text("•").frame(width: 8, alignment: .leading)
                                     Text(component.name).frame(width: 170, alignment: .leading)
                                     Text(component.stockConcentration).frame(width: 70, alignment: .leading)
                                     Text(component.finalConcentration).frame(width: 70, alignment: .leading)
@@ -87,8 +89,17 @@ struct ProtocolPrintView: View {
                         }
                     }
                     if !buffer.finalVolume.isEmpty || !buffer.solvent.isEmpty {
-                        Text(bringToVolumeLine(buffer))
-                            .font(.system(size: 11))
+                        // Boxed so it reads as the step *after* the components, not one more row.
+                        HStack(spacing: 6) {
+                            Text("→")
+                            Text(bringToVolumeLine(buffer))
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .overlay(Rectangle().stroke(Color.black, lineWidth: 0.75))
+                        .padding(.top, 4)
                     }
                     if !buffer.instructions.isEmpty {
                         Text(buffer.instructions)

@@ -66,6 +66,7 @@ struct ProtocolRunView: View {
                         if !buffer.components.isEmpty {
                             Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {
                                 GridRow {
+                                    Color.clear.frame(width: 6, height: 1)
                                     Text("Component")
                                     Text("Stock")
                                     Text("Final")
@@ -75,6 +76,9 @@ struct ProtocolRunView: View {
                                 .foregroundStyle(theme.textTertiary)
                                 ForEach(buffer.components) { component in
                                     GridRow {
+                                        Text("•")
+                                            .fontWeight(.bold)
+                                            .foregroundStyle(theme.accentDeep)
                                         Text(component.name)
                                         Text(component.stockConcentration)
                                         Text(component.finalConcentration)
@@ -86,8 +90,16 @@ struct ProtocolRunView: View {
                             }
                         }
                         if !buffer.finalVolume.isEmpty || !buffer.solvent.isEmpty {
-                            Text(bringToVolumeLine(buffer))
-                                .font(theme.bodyFont(14))
+                            Label(bringToVolumeLine(buffer), systemImage: "arrow.turn.down.right")
+                                .font(theme.bodyFont(15, weight: .semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 9)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(theme.accentDeep.opacity(0.12))
+                                )
+                                .padding(.top, 4)
                         }
                         if !buffer.instructions.isEmpty {
                             Text(buffer.instructions)
@@ -107,7 +119,7 @@ struct ProtocolRunView: View {
     }
 
     private func bringToVolumeLine(_ buffer: BufferRecipe) -> String {
-        var line = "Bring to \(buffer.finalVolume.isEmpty ? "volume" : buffer.finalVolume)"
+        var line = "Then bring to \(buffer.finalVolume.isEmpty ? "volume" : buffer.finalVolume)"
         if !buffer.solvent.isEmpty { line += " with \(buffer.solvent)" }
         if let solventVolume = buffer.solventVolume { line += " (≈ \(solventVolume))" }
         return line + "."

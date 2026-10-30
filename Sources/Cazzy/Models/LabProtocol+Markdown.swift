@@ -28,10 +28,10 @@ extension LabProtocol {
                     out += "\n"
                 }
                 if !buffer.finalVolume.isEmpty || !buffer.solvent.isEmpty {
-                    out += "Bring to \(buffer.finalVolume.isEmpty ? "volume" : buffer.finalVolume)"
+                    out += "**→ Then bring to \(buffer.finalVolume.isEmpty ? "volume" : buffer.finalVolume)"
                     if !buffer.solvent.isEmpty { out += " with \(buffer.solvent)" }
                     if let solventVolume = buffer.solventVolume { out += " (≈ \(solventVolume))" }
-                    out += ".\n\n"
+                    out += ".**\n\n"
                 }
                 if !buffer.instructions.isEmpty {
                     out += "\(buffer.instructions)\n\n"

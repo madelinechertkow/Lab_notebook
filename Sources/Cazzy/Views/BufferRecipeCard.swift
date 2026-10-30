@@ -40,23 +40,32 @@ struct BufferRecipeCard: View {
 
             componentTable
 
+            // Set apart in its own tinted box so it reads as the step after the components,
+            // not as one more row of the table.
             HStack(spacing: 6) {
-                Image(systemName: "drop")
-                    .font(.system(size: 10))
+                Image(systemName: "arrow.turn.down.right")
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(theme.accentDeep)
-                Text("Bring to \(buffer.finalVolume.isEmpty ? "volume" : buffer.finalVolume) with")
-                    .font(theme.bodyFont(11))
-                    .foregroundStyle(theme.textSecondary)
+                Text("Then bring to \(buffer.finalVolume.isEmpty ? "volume" : buffer.finalVolume) with")
+                    .font(theme.bodyFont(12, weight: .semibold))
+                    .foregroundStyle(theme.textPrimary)
                 TextField("Milli-Q water", text: $buffer.solvent)
                     .textFieldStyle(.plain)
-                    .font(theme.bodyFont(11, weight: .medium))
+                    .font(theme.bodyFont(12, weight: .semibold))
                 if let solventVolume = buffer.solventVolume {
                     Text("(≈ \(solventVolume))")
-                        .font(theme.bodyFont(11))
-                        .foregroundStyle(theme.textTertiary)
+                        .font(theme.bodyFont(12))
+                        .foregroundStyle(theme.textSecondary)
                 }
                 Spacer(minLength: 0)
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(theme.accentDeep.opacity(0.12))
+            )
+            .padding(.top, 4)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Preparation")
@@ -75,6 +84,7 @@ struct BufferRecipeCard: View {
     private var componentTable: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
+                Color.clear.frame(width: 8)
                 Text("Component").frame(maxWidth: .infinity, alignment: .leading)
                 Text("Stock").frame(width: stockWidth, alignment: .leading)
                 Text("Final").frame(width: finalWidth, alignment: .leading)
@@ -86,6 +96,10 @@ struct BufferRecipeCard: View {
 
             ForEach($buffer.components) { $component in
                 HStack(spacing: 8) {
+                    Text("•")
+                        .font(theme.bodyFont(14, weight: .bold))
+                        .foregroundStyle(theme.accentDeep)
+                        .frame(width: 8)
                     TextField("Tris-HCl pH 7.5", text: $component.name)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     TextField("1 M", text: $component.stockConcentration)
