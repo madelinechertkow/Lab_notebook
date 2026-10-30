@@ -24,6 +24,10 @@ struct ProtocolEditorView: View {
     @State private var exportErrorMessage: String?
     @State private var draggedStepID: UUID?
     @State private var draggedReagentID: UUID?
+    @State private var isViewing = false
+    /// What's been ticked off in View mode. Lives here (not in the run view) so flipping to Edit
+    /// to fix a typo mid-experiment doesn't lose your place; cleared when switching protocols.
+    @State private var runChecked: Set<UUID> = []
 
     private var currentProtocol: LabProtocol? {
         store.protocols.first(where: { $0.id == protocolID })
@@ -31,26 +35,20 @@ struct ProtocolEditorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider().overlay(theme.divider).padding(.top, 10)
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    purposeSection
-                    buffersSection
-                    reagentsSection
-                    stepsSection
-                    if showingVersionHistory {
-                        versionHistorySection
-                    }
-                }
-                .padding(20)
+            if isViewing, let currentProtocol {
+                viewModeHeader(currentProtocol)
+                Divider().overlay(theme.divider).padding(.top, 10)
+                ProtocolRunView(protocolItem: currentProtocol, checked: $runChecked)
+            } else {
+                editor
             }
-            .scrollContentBackground(.hidden)
         }
         .background(theme.editorBackground)
         .onAppear(perform: loadFromProtocol)
-        .onChange(of: protocolID) { _ in loadFromProtocol() }
+        .onChange(of: protocolID) { _ in
+            runChecked = []
+            loadFromProtocol()
+        }
         .onChange(of: store.undoTick) { _ in loadFromProtocol() }
         .alert(
             "Couldn't export protocol",
@@ -76,6 +74,72 @@ struct ProtocolEditorView: View {
         }
     }
 
+    private var editor: some View {
+        VStack(spacing: 0) {
+            header
+            Divider().overlay(theme.divider).padding(.top, 10)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    purposeSection
+                    buffersSection
+                    reagentsSection
+                    stepsSection
+                    if showingVersionHistory {
+                        versionHistorySection
+                    }
+                }
+                .padding(20)
+            }
+            .scrollContentBackground(.hidden)
+        }
+    }
+
+    // MARK: - View mode
+
+    private func viewModeHeader(_ protocolItem: LabProtocol) -> some View {
+        let stepIDs = protocolItem.steps.filter { $0.kind == .step }.map(\.id)
+        let doneCount = stepIDs.filter { runChecked.contains($0) }.count
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(protocolItem.name.isEmpty ? "Untitled Protocol" : protocolItem.name)
+                    .font(theme.displayFont(26))
+                    .foregroundStyle(theme.textPrimary)
+                if protocolItem.currentVersionNumber > 0 {
+                    Text("v\(protocolItem.currentVersionNumber)")
+                        .font(theme.bodyFont(12, weight: .medium))
+                        .foregroundStyle(theme.textTertiary)
+                }
+                Spacer()
+                actionButton("pencil", "Edit") {
+                    isViewing = false
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+            }
+            HStack(spacing: 10) {
+                if !stepIDs.isEmpty {
+                    ProgressView(value: Double(doneCount), total: Double(stepIDs.count))
+                        .frame(maxWidth: 200)
+                        .tint(theme.accentDeep)
+                    Text("\(doneCount) of \(stepIDs.count) steps done")
+                        .font(theme.bodyFont(12))
+                        .foregroundStyle(theme.textSecondary)
+                }
+                Spacer()
+                if !runChecked.isEmpty {
+                    actionButton("arrow.counterclockwise", "Clear Ticks") {
+                        runChecked = []
+                    }
+                }
+                actionButton("printer", "Print") {
+                    ProtocolPrinter.print(protocolItem)
+                }
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 20)
+    }
+
     // MARK: - Header
 
     private var header: some View {
@@ -98,6 +162,12 @@ struct ProtocolEditorView: View {
             TagRow(tags: $tags, newTag: $newTag, onCommit: persist)
 
             HStack(spacing: 10) {
+                actionButton("eye", "View") {
+                    isViewing = true
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .help("See the protocol without the editing controls — for when you're running it (⇧⌘E)")
+
                 actionButton("clock.arrow.circlepath", "Save New Version") {
                     changeNoteDraft = ""
                     showingSaveVersionPopover = true
@@ -643,6 +713,7 @@ private struct StepRow: View {
     let number: Int
     @Binding var draggedStepID: UUID?
     let onDelete: () -> Void
+    @State private var showingDilutionCalculator = false
 
     /// `step.durationMinutes` is the canonical storage; hours and minutes are just two views
     /// onto the same total, so "1 hr 30 min" and "90 min" are the same underlying value.
@@ -748,10 +819,16 @@ private struct StepRow: View {
     }
 
     var body: some View {
-        if step.kind == .section {
-            sectionBody
-        } else {
-            stepBody
+        Group {
+            if step.kind == .section {
+                sectionBody
+            } else {
+                stepBody
+            }
+        }
+        .sheet(isPresented: $showingDilutionCalculator) {
+            DilutionCalculatorSheet { step.table = $0 }
+                .environmentObject(theme)
         }
     }
 
@@ -878,9 +955,39 @@ private struct StepRow: View {
                         .menuStyle(.borderlessButton)
                         .fixedSize()
                         .help("Mark importance: Normal, Important, or Critical")
+
+                        Menu {
+                            Button {
+                                step.table = .blank()
+                            } label: {
+                                Label(step.table == nil ? "Add Table" : "Replace with Blank Table", systemImage: "tablecells")
+                            }
+                            Button {
+                                showingDilutionCalculator = true
+                            } label: {
+                                Label("Dilution Calculator…", systemImage: "drop.triangle")
+                            }
+                        } label: {
+                            Image(systemName: "tablecells")
+                                .foregroundStyle(step.table == nil ? theme.textTertiary : theme.accentDeep)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        .help("Add a table or a calculated dilution to this step")
                     }
                     .font(theme.bodyFont(11))
                     .foregroundStyle(theme.textSecondary)
+
+                    if step.table != nil {
+                        StepTableEditor(
+                            table: Binding(
+                                get: { step.table ?? .blank() },
+                                set: { step.table = $0 }
+                            ),
+                            onRemove: { step.table = nil }
+                        )
+                    }
                 }
             }
 

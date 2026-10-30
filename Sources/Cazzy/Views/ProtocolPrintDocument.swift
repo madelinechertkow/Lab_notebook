@@ -198,7 +198,39 @@ struct ProtocolPrintView: View {
                         .italic()
                         .foregroundStyle(Color.gray)
                 }
+                if let table = step.table {
+                    printTable(table)
+                        .padding(.top, 3)
+                }
             }
+        }
+    }
+
+    private func printTable(_ table: StepTable) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if !table.title.isEmpty {
+                Text(table.title)
+                    .font(.system(size: 10, weight: .semibold))
+            }
+            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 3) {
+                GridRow {
+                    ForEach(table.columns.indices, id: \.self) { column in
+                        Text(table.columns[column])
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                }
+                Divider()
+                ForEach(table.rows.indices, id: \.self) { row in
+                    GridRow {
+                        ForEach(table.columns.indices, id: \.self) { column in
+                            Text(table.rows[row][column])
+                                .font(.system(size: 10))
+                        }
+                    }
+                }
+            }
+            .padding(6)
+            .overlay(Rectangle().stroke(Color.gray.opacity(0.6), lineWidth: 0.5))
         }
     }
 

@@ -222,6 +222,40 @@ enum StepImportance: String, Codable, CaseIterable, Equatable {
     }
 }
 
+/// A small grid attached to a step — a plate layout, a dilution series, a PCR mix. All cells
+/// are free text; `DilutionMath` can fill one in, but after that it's just an editable table.
+struct StepTable: Codable, Equatable {
+    var title: String = ""
+    var columns: [String]
+    var rows: [[String]]
+
+    init(title: String = "", columns: [String], rows: [[String]]) {
+        self.title = title
+        self.columns = columns
+        self.rows = rows
+    }
+
+    static func blank(columns: Int = 3, rows: Int = 2) -> StepTable {
+        StepTable(columns: Array(repeating: "", count: columns), rows: Array(repeating: Array(repeating: "", count: columns), count: rows))
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case title, columns, rows
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        columns = try container.decodeIfPresent([String].self, forKey: .columns) ?? []
+        // Pad/trim every row to the column count so views can index cells without checking.
+        let decodedRows = try container.decodeIfPresent([[String]].self, forKey: .rows) ?? []
+        let width = columns.count
+        rows = decodedRows.map { row in
+            Array((row + Array(repeating: "", count: max(0, width - row.count))).prefix(width))
+        }
+    }
+}
+
 struct ProtocolStep: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var text: String
@@ -230,6 +264,8 @@ struct ProtocolStep: Identifiable, Codable, Equatable {
     var notes: String = ""
     var kind: StepKind = .step
     var importance: StepImportance = .normal
+    /// Optional table shown under the step (e.g. a dilution series).
+    var table: StepTable?
 
     init(
         id: UUID = UUID(),
@@ -238,7 +274,8 @@ struct ProtocolStep: Identifiable, Codable, Equatable {
         temperatureCelsius: Double? = nil,
         notes: String = "",
         kind: StepKind = .step,
-        importance: StepImportance = .normal
+        importance: StepImportance = .normal,
+        table: StepTable? = nil
     ) {
         self.id = id
         self.text = text
@@ -247,10 +284,11 @@ struct ProtocolStep: Identifiable, Codable, Equatable {
         self.notes = notes
         self.kind = kind
         self.importance = importance
+        self.table = table
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, text, durationMinutes, temperatureCelsius, notes, kind, importance
+        case id, text, durationMinutes, temperatureCelsius, notes, kind, importance, table
     }
 
     init(from decoder: Decoder) throws {
@@ -262,6 +300,7 @@ struct ProtocolStep: Identifiable, Codable, Equatable {
         notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
         kind = try container.decodeIfPresent(StepKind.self, forKey: .kind) ?? .step
         importance = try container.decodeIfPresent(StepImportance.self, forKey: .importance) ?? .normal
+        table = try? container.decodeIfPresent(StepTable.self, forKey: .table)
     }
 }
 

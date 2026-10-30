@@ -77,6 +77,16 @@ extension LabProtocol {
                     if !details.isEmpty { out += " — " + details.joined(separator: " · ") }
                     out += "\n"
                     if !step.notes.isEmpty { out += "   *\(step.notes)*\n" }
+                    if let table = step.table, !table.columns.isEmpty {
+                        out += "\n"
+                        if !table.title.isEmpty { out += "   **\(table.title)**\n\n" }
+                        out += "   | " + table.columns.map(Self.tableCell).joined(separator: " | ") + " |\n"
+                        out += "   |" + String(repeating: "---|", count: table.columns.count) + "\n"
+                        for row in table.rows {
+                            out += "   | " + row.map(Self.tableCell).joined(separator: " | ") + " |\n"
+                        }
+                        out += "\n"
+                    }
                 }
             }
         }

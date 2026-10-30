@@ -228,6 +228,21 @@ enum ManualContent {
 
     Sections carry through everywhere the protocol goes: the printout, the Box backup, and the checklist in a notebook entry created from a scheduled experiment.
 
+    ## Tables and dilutions in a step
+
+    Any step can carry a table — a dilution series, a plate layout, a PCR master mix. Click the **table icon** at the right of the step's details row and choose **Add Table** for a blank grid you fill in yourself: type a title (optional) and the column headings, use **Add row** underneath, and the small **+** / **−** squares at the end of the heading row to add or remove columns.
+
+    Or choose **Dilution Calculator…** and let Cazzy work it out:
+
+    - **Single dilution** — e.g. an antibody at 1:1000 in 10 mL of 5% BSA. Cazzy lists how much of each to add (10 µL antibody + 9.99 mL BSA).
+    - **Serial dilution** — a dilution per step (e.g. 1:2 or 1:10), how many tubes, and the volume each tube should end up with. Give a starting concentration too (optional) and each tube's concentration is listed. Cazzy puts the diluent in every tube after the first, carries the right amount over from tube to tube, and tells you how much to discard from the last tube so they all hold the same volume.
+
+    **Add to Step** puts the result into the step as an ordinary table, so you can still edit any cell afterwards. Tables show up in View mode, the printout, and the Box backup.
+
+    ## View mode — running a protocol
+
+    Click **View** (⇧⌘E) at the top of a protocol to see it without any editing controls, in larger type — the version to have open at the bench. Buffers, materials and steps each get a circle you can tick as you go, and the top shows how many steps are done. Click **Edit** (⇧⌘E again) to go back; your ticks stay put if you pop into Edit to fix something. Ticks are only a working aid — they're cleared when you switch to a different protocol or quit Cazzy (**Clear Ticks** clears them yourself), and they're never saved into the protocol.
+
     ## Materials & Reagents
 
     Click the **+** next to Materials & Reagents and pick what kind of material you're adding — Chemicals & Reagents, Antibodies, Cells & Biological, Kits, Consumables, Equipment & Machines, Software, or Other. Materials are then listed grouped under those headings, in that order, so the bench chemicals, the plasticware and the instruments you need to book each sit together. To move a material to a different group, either click the small category icon in its row and choose another, or grab its **≡** handle and drag it — onto another material to slot it in there (it takes on that material's category), or onto a category heading to add it to the end of that group. While you drag, every category is shown, including empty ones, so you can drop into any of them. Dragging within a group just reorders.

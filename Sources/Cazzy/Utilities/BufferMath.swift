@@ -84,6 +84,24 @@ enum BufferMath {
         return (value, unit)
     }
 
+    /// "10 µM" → (10, "µM"): the leading number, and the rest exactly as typed (for display).
+    static func leadingNumber(_ text: String) -> (value: Double, rest: String)? {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        let numberEnd = trimmed.firstIndex { !($0.isNumber || $0 == "." || $0 == ",") } ?? trimmed.endIndex
+        guard let value = Double(trimmed[..<numberEnd].replacingOccurrences(of: ",", with: ".")) else { return nil }
+        return (value, trimmed[numberEnd...].trimmingCharacters(in: .whitespaces))
+    }
+
+    /// Up to 3 significant figures, no grouping separator: 0.123, 12.3, 1230.
+    static func formatNumber(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.usesSignificantDigits = true
+        formatter.maximumSignificantDigits = 3
+        formatter.minimumSignificantDigits = 1
+        formatter.usesGroupingSeparator = false
+        return formatter.string(from: NSNumber(value: value)) ?? String(value)
+    }
+
     /// Picks L / mL / µL so the number reads naturally, to at most 3 significant figures.
     static func formatVolume(_ liters: Double) -> String {
         let (value, unit): (Double, String)
@@ -94,11 +112,6 @@ enum BufferMath {
         } else {
             (value, unit) = (liters * 1e6, "µL")
         }
-        let formatter = NumberFormatter()
-        formatter.usesSignificantDigits = true
-        formatter.maximumSignificantDigits = 3
-        formatter.minimumSignificantDigits = 1
-        formatter.usesGroupingSeparator = false
-        return "\(formatter.string(from: NSNumber(value: value)) ?? String(value)) \(unit)"
+        return "\(formatNumber(value)) \(unit)"
     }
 }
