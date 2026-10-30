@@ -62,8 +62,10 @@ extension LabProtocol {
                 switch step.kind {
                 case .section:
                     out += "\n### \(step.text.isEmpty ? "Section" : step.text)\n\n"
+                case .pause:
+                    out += "\n> **⏸ PAUSE POINT:** \(step.text)\n\n"
                 case .note, .warning:
-                    out += "> **\(step.kind == .warning ? "WARNING" : "NOTE"):** \(step.text)\n\n"
+                    out += "\n> **\(step.kind == .warning ? "WARNING" : "NOTE"):** \(step.text)\n\n"
                 case .step:
                     var details: [String] = []
                     if let minutes = step.durationMinutes { details.append(DurationText.format(minutes)) }

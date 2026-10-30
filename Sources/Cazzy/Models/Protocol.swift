@@ -170,12 +170,14 @@ struct BufferRecipe: Identifiable, Codable, Equatable {
 
 /// Whether a `ProtocolStep` is an actual numbered procedure step, a standalone callout
 /// (not numbered) meant to interrupt the flow and catch the reader's eye, or a section
-/// heading that groups the steps after it (numbering restarts under each section).
+/// heading that groups the steps after it (numbering restarts under each section). A pause
+/// point marks a safe place to stop, with how to store things until you pick back up.
 enum StepKind: String, Codable, CaseIterable, Equatable {
     case step
     case note
     case warning
     case section
+    case pause
 
     var label: String {
         switch self {
@@ -183,6 +185,7 @@ enum StepKind: String, Codable, CaseIterable, Equatable {
         case .note: return "Note"
         case .warning: return "Warning"
         case .section: return "Section"
+        case .pause: return "Pause Point"
         }
     }
 }
@@ -200,7 +203,7 @@ extension Array where Element == ProtocolStep {
             case .step:
                 counter += 1
                 return counter
-            case .note, .warning:
+            case .note, .warning, .pause:
                 return 0
             }
         }

@@ -410,6 +410,7 @@ struct ProtocolEditorView: View {
                     Button("Add Step") { addStep(kind: .step) }
                     Button("Add Note") { addStep(kind: .note) }
                     Button("Add Warning") { addStep(kind: .warning) }
+                    Button("Add Pause Point") { addStep(kind: .pause) }
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 14))
@@ -762,6 +763,7 @@ private struct StepRow: View {
         switch step.kind {
         case .note: return .blue
         case .warning: return .orange
+        case .pause: return .teal
         case .section: return nil
         case .step:
             switch step.importance {
@@ -777,6 +779,7 @@ private struct StepRow: View {
         case .step, .section: return nil
         case .note: return "NOTE"
         case .warning: return "WARNING"
+        case .pause: return "PAUSE POINT — safe to stop here"
         }
     }
 
@@ -809,6 +812,12 @@ private struct StepRow: View {
                 .foregroundStyle(.white)
                 .frame(width: 18, height: 18)
                 .background(Circle().fill(Color.orange))
+        case .pause:
+            Image(systemName: "pause.fill")
+                .font(.system(size: 9))
+                .foregroundStyle(.white)
+                .frame(width: 18, height: 18)
+                .background(Circle().fill(Color.teal))
         case .section:
             Image(systemName: "text.badge.plus")
                 .font(.system(size: 10))
@@ -853,7 +862,7 @@ private struct StepRow: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help("Change type: Section, Step, Note, or Warning")
+        .help("Change type: Section, Step, Note, Warning, or Pause Point")
     }
 
     /// A heading that groups the steps below it — no card, just a title and a rule, so it reads
@@ -900,7 +909,9 @@ private struct StepRow: View {
                 }
 
                 TextField(
-                    step.kind == .step ? "Describe this step" : "\(step.kind.label) text",
+                    step.kind == .step ? "Describe this step"
+                        : step.kind == .pause ? "How to store things until you continue (e.g. lysates at −80 °C for up to a month)"
+                        : "\(step.kind.label) text",
                     text: $step.text,
                     axis: .vertical
                 )

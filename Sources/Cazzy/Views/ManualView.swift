@@ -218,7 +218,7 @@ enum ManualContent {
 
     ## Building a protocol
 
-    A protocol has a **name**, a **purpose**, optional **Buffers & Solutions**, a list of **Materials & Reagents** (name/amount/unit/notes, plus a category), and a list of **Steps**. Each item in Steps is one of four kinds — a numbered **Step**, a non-numbered **Note** or **Warning** callout for things that interrupt the flow rather than being an actual procedure step, or a **Section** heading. Steps additionally have an **importance** (Normal / Important / Critical, shown as a colored flag), and optional duration, temperature, and notes.
+    A protocol has a **name**, a **purpose**, optional **Buffers & Solutions**, a list of **Materials & Reagents** (name/amount/unit/notes, plus a category), and a list of **Steps**. Each item in Steps is one of five kinds — a numbered **Step**, a non-numbered **Note** or **Warning** callout for things that interrupt the flow rather than being an actual procedure step, a **Pause Point**, or a **Section** heading. Steps additionally have an **importance** (Normal / Important / Critical, shown as a colored flag), and optional duration, temperature, and notes.
 
     Drag the handle on any step or reagent row to reorder it.
 
@@ -227,6 +227,10 @@ enum ManualContent {
     Long protocols can be split into sections — "Day 1 — Cell prep", "Day 2 — Tagmentation", and so on. Choose **Add Section** from the **+** menu next to Steps, then type the heading. Every step below a section heading belongs to it until the next heading, and step numbers start again at 1 under each section. Sections drag around like any other step; to turn an existing step into a section heading (or back), click its badge and pick a different type.
 
     Sections carry through everywhere the protocol goes: the printout, the Box backup, and the checklist in a notebook entry created from a scheduled experiment.
+
+    ## Pause points
+
+    A pause point marks a safe place to stop partway through — choose **Add Pause Point** from the **+** menu next to Steps (or turn an existing item into one by clicking its badge), drag it to where it belongs, and type how to keep things until you carry on, e.g. "Lysates can be stored at −80 °C for up to a month." It isn't numbered, and it stands out in teal with a ⏸ symbol and "safe to stop here" in the editor, View mode, the printout and the Box backup. When you schedule the protocol, pause points also appear in the experiment entry's checklist.
 
     ## Tables and dilutions in a step
 

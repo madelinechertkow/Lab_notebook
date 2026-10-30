@@ -125,12 +125,14 @@ extension NoteStore {
             if !linkedProtocol.buffers.isEmpty {
                 content += "**Buffers:** \(linkedProtocol.buffers.map { $0.name.isEmpty ? "Untitled buffer" : $0.name }.joined(separator: ", "))\n\n"
             }
-            let checklistSteps = linkedProtocol.steps.filter { $0.kind == .step || $0.kind == .section }
+            let checklistSteps = linkedProtocol.steps.filter { $0.kind == .step || $0.kind == .section || $0.kind == .pause }
             if checklistSteps.contains(where: { $0.kind == .step }) {
                 content += "## Steps\n"
                 for step in checklistSteps {
                     if step.kind == .section {
                         content += "\n### \(step.text.isEmpty ? "Section" : step.text)\n"
+                    } else if step.kind == .pause {
+                        content += "\n**⏸ Pause point** — \(step.text)\n\n"
                     } else {
                         content += "- [ ] \(step.text)\n"
                     }

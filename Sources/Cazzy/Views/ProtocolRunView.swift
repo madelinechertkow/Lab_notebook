@@ -180,7 +180,7 @@ struct ProtocolRunView: View {
                             .frame(height: 1.5)
                     }
                     .padding(.top, 10)
-                case .note, .warning:
+                case .note, .warning, .pause:
                     callout(step)
                 case .step:
                     stepRow(step, number: numbers[index])
@@ -252,13 +252,22 @@ struct ProtocolRunView: View {
     }
 
     private func callout(_ step: ProtocolStep) -> some View {
-        let color: Color = step.kind == .warning ? .orange : .blue
+        let color: Color = switch step.kind {
+        case .warning: .orange
+        case .pause: .teal
+        default: .blue
+        }
+        let label = switch step.kind {
+        case .warning: "WARNING"
+        case .pause: "⏸ PAUSE POINT — safe to stop here"
+        default: "NOTE"
+        }
         return HStack(alignment: .top, spacing: 0) {
             Rectangle()
                 .fill(color)
                 .frame(width: 4)
             VStack(alignment: .leading, spacing: 3) {
-                Text(step.kind == .warning ? "WARNING" : "NOTE")
+                Text(label)
                     .font(theme.bodyFont(11, weight: .heavy))
                     .foregroundStyle(color)
                     .tracking(0.5)

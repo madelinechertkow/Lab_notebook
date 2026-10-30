@@ -168,7 +168,7 @@ struct ProtocolPrintView: View {
                 switch step.kind {
                 case .step:
                     stepRow(ordinal: numbers[index], step: step)
-                case .note, .warning:
+                case .note, .warning, .pause:
                     calloutRow(step: step)
                 case .section:
                     VStack(alignment: .leading, spacing: 3) {
@@ -248,8 +248,16 @@ struct ProtocolPrintView: View {
     /// A "not really a step" callout — no number, colored bar + tinted background so it
     /// still catches the eye on a printed, black-and-white-otherwise page.
     private func calloutRow(step: ProtocolStep) -> some View {
-        let color: Color = step.kind == .warning ? .orange : .blue
-        let label = step.kind == .warning ? "WARNING" : "NOTE"
+        let color: Color = switch step.kind {
+        case .warning: .orange
+        case .pause: .teal
+        default: .blue
+        }
+        let label = switch step.kind {
+        case .warning: "WARNING"
+        case .pause: "PAUSE POINT — SAFE TO STOP HERE"
+        default: "NOTE"
+        }
         return HStack(alignment: .top, spacing: 0) {
             Rectangle()
                 .fill(color)
