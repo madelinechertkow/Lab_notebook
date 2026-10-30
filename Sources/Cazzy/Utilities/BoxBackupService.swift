@@ -7,12 +7,16 @@ import CryptoKit
 /// Box Drive folder gets the same result with no credentials, and keeps working offline (Box
 /// Drive uploads once it reconnects).
 ///
-/// Layout: `<folder>/<Notebook name>/<yyyy-MM-dd> <Title>.md`, with inserted images copied to
-/// `<folder>/<Notebook name>/images/`. A manifest in Application Support remembers which file
+/// Layout, all inside a `Cazzy` subfolder of the chosen folder so it stays separate from
+/// anything else already there:
+///   `Cazzy/<Notebook name>/<yyyy-MM-dd> <Title>.md` — one folder per notebook (created even
+///       while empty), inserted images copied to `Cazzy/<Notebook name>/images/`
+///   `Cazzy/Protocol Library/<Protocol name>.md` — the structured protocols
+/// A manifest in Application Support remembers which file
 /// belongs to which note and a hash of what was last written, so a sync only touches notes
 /// that actually changed (rewriting unchanged files would make Box re-upload them every time).
 ///
-/// Deleting a note in Cazzy deliberately does NOT delete its backup file — the point of the
+/// Deleting a note or protocol in Cazzy deliberately does NOT delete its backup file — the point of the
 /// backup is a durable record. Renaming or moving a note does move its file, so stale copies
 /// under old names don't pile up.
 final class BoxBackupService: ObservableObject {
@@ -35,9 +39,14 @@ final class BoxBackupService: ObservableObject {
     private var pendingWork: DispatchWorkItem?
     private let manifestURL: URL
 
+    /// Everything Cazzy writes goes under this subfolder of the user's chosen folder.
+    static let rootFolderName = "Cazzy"
+    private static let protocolFolderName = "Protocol Library"
+
     private struct Snapshot {
         var notes: [Note]
         var notebooks: [Notebook]
+        var protocols: [LabProtocol]
     }
 
     private struct ManifestEntry: Codable {
@@ -71,20 +80,20 @@ final class BoxBackupService: ObservableObject {
     }
 
     /// Called after every store save. Coalesces bursts (typing) into one backup.
-    func scheduleBackup(notes: [Note], notebooks: [Notebook]) {
+    func scheduleBackup(notes: [Note], notebooks: [Notebook], protocols: [LabProtocol]) {
         guard isEnabled, folderURL != nil else { return }
         pendingWork?.cancel()
-        let snapshot = Snapshot(notes: notes, notebooks: notebooks)
+        let snapshot = Snapshot(notes: notes, notebooks: notebooks, protocols: protocols)
         let work = DispatchWorkItem { [weak self] in self?.run(snapshot) }
         pendingWork = work
         queue.asyncAfter(deadline: .now() + Self.debounceInterval, execute: work)
     }
 
     /// Runs immediately (e.g. the "Back Up Now" button), skipping the typing debounce.
-    func backUpNow(notes: [Note], notebooks: [Notebook]) {
+    func backUpNow(notes: [Note], notebooks: [Notebook], protocols: [LabProtocol]) {
         guard folderURL != nil else { return }
         pendingWork?.cancel()
-        let snapshot = Snapshot(notes: notes, notebooks: notebooks)
+        let snapshot = Snapshot(notes: notes, notebooks: notebooks, protocols: protocols)
         queue.async { [weak self] in self?.run(snapshot) }
     }
 
@@ -120,8 +129,52 @@ final class BoxBackupService: ObservableObject {
             manifest = Manifest(folderPath: folder.path, entries: [:])
         }
 
+        let root = Self.rootFolderName
         let notebooksByID = Dictionary(uniqueKeysWithValues: snapshot.notebooks.map { ($0.id, $0) })
         var claimedPaths = Set<String>()
+        var vacatedFolders = Set<URL>()
+
+        /// Picks a path not already used this run (two notes with the same date + title get a
+        /// short ID appended), moves the item's old file there if it was renamed or moved, and
+        /// writes it if its content changed since the last backup.
+        func write(id: UUID, folder subfolder: String, fileName: (String?) -> String, markdown: String) throws {
+            var relativePath = "\(root)/\(subfolder)/\(fileName(nil))"
+            if claimedPaths.contains(relativePath.lowercased()) {
+                relativePath = "\(root)/\(subfolder)/\(fileName(String(id.uuidString.prefix(6))))"
+            }
+            claimedPaths.insert(relativePath.lowercased())
+
+            let destination = folder.appendingPathComponent(relativePath)
+            let previous = manifest.entries[id]
+            let hash = SHA256.hash(data: Data(markdown.utf8)).map { String(format: "%02x", $0) }.joined()
+
+            if let previous, previous.relativePath != relativePath {
+                // Renamed, moved to another notebook, or written before the Cazzy subfolder
+                // existed — move the old file rather than leaving a stale copy behind.
+                let oldURL = folder.appendingPathComponent(previous.relativePath)
+                if fm.fileExists(atPath: oldURL.path) && !fm.fileExists(atPath: destination.path) {
+                    try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try? fm.moveItem(at: oldURL, to: destination)
+                    vacatedFolders.insert(oldURL.deletingLastPathComponent())
+                }
+            }
+
+            let unchanged = previous?.hash == hash
+                && previous?.relativePath == relativePath
+                && fm.fileExists(atPath: destination.path)
+            if unchanged { return }
+
+            try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(markdown.utf8).write(to: destination, options: .atomic)
+            manifest.entries[id] = ManifestEntry(relativePath: relativePath, hash: hash)
+        }
+
+        // A folder for every active notebook, even before it has any entries.
+        for notebook in snapshot.notebooks where !notebook.isArchived {
+            let notebookFolder = folder.appendingPathComponent(root)
+                .appendingPathComponent(Self.sanitize(notebook.name, fallback: "Unfiled"))
+            try fm.createDirectory(at: notebookFolder, withIntermediateDirectories: true)
+        }
 
         for note in snapshot.notes.sorted(by: { $0.createdAt < $1.createdAt }) {
             let notebookName = notebooksByID[note.notebookID]?.name ?? "Unfiled"
@@ -130,38 +183,28 @@ final class BoxBackupService: ObservableObject {
             // The images folder is per notebook, so links in the .md are relative and still
             // resolve when someone opens the file straight from Box.
             let (markdown, images) = render(note, notebookName: notebookName)
-            let hash = SHA256.hash(data: Data(markdown.utf8)).map { String(format: "%02x", $0) }.joined()
+            try copyImages(images, into: folder.appendingPathComponent(root)
+                .appendingPathComponent(notebookFolder).appendingPathComponent("images"))
+            try write(id: note.id, folder: notebookFolder, fileName: { Self.fileName(for: note, suffix: $0) }, markdown: markdown)
+        }
 
-            var relativePath = "\(notebookFolder)/\(Self.fileName(for: note))"
-            if claimedPaths.contains(relativePath.lowercased()) {
-                // Two notes with the same date + title: disambiguate with a short ID.
-                relativePath = "\(notebookFolder)/\(Self.fileName(for: note, suffix: String(note.id.uuidString.prefix(6))))"
-            }
-            claimedPaths.insert(relativePath.lowercased())
+        for protocolItem in snapshot.protocols.sorted(by: { $0.createdAt < $1.createdAt }) {
+            try write(
+                id: protocolItem.id,
+                folder: Self.protocolFolderName,
+                fileName: { suffix in
+                    let base = Self.sanitize(protocolItem.name, fallback: "Untitled Protocol")
+                    return (suffix.map { "\(base) \($0)" } ?? base) + ".md"
+                },
+                markdown: render(protocolItem)
+            )
+        }
 
-            let destination = folder.appendingPathComponent(relativePath)
-            let previous = manifest.entries[note.id]
-
-            if let previous, previous.relativePath != relativePath {
-                // Renamed or moved to another notebook — move the old file rather than leaving
-                // a stale copy behind under the old name.
-                let oldURL = folder.appendingPathComponent(previous.relativePath)
-                if fm.fileExists(atPath: oldURL.path) && !fm.fileExists(atPath: destination.path) {
-                    try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    try? fm.moveItem(at: oldURL, to: destination)
-                }
-            }
-
-            try copyImages(images, into: folder.appendingPathComponent(notebookFolder).appendingPathComponent("images"))
-
-            let unchanged = previous?.hash == hash
-                && previous?.relativePath == relativePath
-                && fm.fileExists(atPath: destination.path)
-            if unchanged { continue }
-
-            try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try Data(markdown.utf8).write(to: destination, options: .atomic)
-            manifest.entries[note.id] = ManifestEntry(relativePath: relativePath, hash: hash)
+        // Tidy up folders left empty by moves (e.g. the pre-"Cazzy" notebook folders). Only
+        // ever removes a folder with nothing in it but an empty images folder or .DS_Store.
+        for vacated in vacatedFolders where vacated.path.hasPrefix(folder.path + "/") {
+            Self.removeIfEmpty(vacated.appendingPathComponent("images"))
+            Self.removeIfEmpty(vacated)
         }
 
         saveManifest(manifest)
@@ -197,6 +240,29 @@ final class BoxBackupService: ObservableObject {
         header += "cazzy-id: \(note.id.uuidString)\n"
         header += "---\n\n"
         return (header + body + (body.hasSuffix("\n") ? "" : "\n"), images)
+    }
+
+    private func render(_ protocolItem: LabProtocol) -> String {
+        let iso = ISO8601DateFormatter()
+        var header = "---\n"
+        header += "title: \(Self.yamlQuoted(protocolItem.name))\n"
+        header += "type: protocol\n"
+        if protocolItem.currentVersionNumber > 0 { header += "version: \(protocolItem.currentVersionNumber)\n" }
+        if !protocolItem.tags.isEmpty {
+            header += "tags: [\(protocolItem.tags.map(Self.yamlQuoted).joined(separator: ", "))]\n"
+        }
+        header += "created: \(iso.string(from: protocolItem.createdAt))\n"
+        header += "updated: \(iso.string(from: protocolItem.updatedAt))\n"
+        header += "cazzy-id: \(protocolItem.id.uuidString)\n"
+        header += "---\n\n"
+        return header + protocolItem.markdownBody
+    }
+
+    private static func removeIfEmpty(_ directory: URL) {
+        let fm = FileManager.default
+        guard let contents = try? fm.contentsOfDirectory(atPath: directory.path) else { return }
+        guard contents.allSatisfy({ $0 == ".DS_Store" }) else { return }
+        try? fm.removeItem(at: directory)
     }
 
     private func copyImages(_ filenames: [String], into imagesFolder: URL) throws {

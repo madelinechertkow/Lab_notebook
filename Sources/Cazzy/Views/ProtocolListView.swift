@@ -219,6 +219,7 @@ struct ProtocolListView: View {
         }
         protocolItem.name = snapshot.name
         protocolItem.purpose = snapshot.purpose
+        protocolItem.buffers = snapshot.buffers
         protocolItem.reagents = snapshot.reagents
         protocolItem.steps = snapshot.steps
         protocolItem.tags = snapshot.tags

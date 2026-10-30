@@ -9,6 +9,7 @@ struct ProtocolEditorView: View {
 
     @State private var name: String = ""
     @State private var purpose: String = ""
+    @State private var buffers: [BufferRecipe] = []
     @State private var reagents: [Reagent] = []
     @State private var steps: [ProtocolStep] = []
     @State private var tags: [String] = []
@@ -35,6 +36,7 @@ struct ProtocolEditorView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     purposeSection
+                    buffersSection
                     reagentsSection
                     stepsSection
                     if showingVersionHistory {
@@ -182,6 +184,38 @@ struct ProtocolEditorView: View {
         }
     }
 
+    // MARK: - Buffers
+
+    /// Optional: a protocol that doesn't need buffers just leaves this empty, and it collapses
+    /// to its header plus a one-line hint.
+    private var buffersSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                sectionHeader("Buffers & Solutions", systemImage: "flask")
+                Text("optional")
+                    .font(theme.bodyFont(10))
+                    .foregroundStyle(theme.textTertiary)
+                Spacer()
+                addButton { addBuffer() }
+                    .help("Add a buffer recipe")
+            }
+            if buffers.isEmpty {
+                emptyRow("No buffers — click + if this protocol needs one made up beforehand.")
+            } else {
+                ForEach($buffers) { $buffer in
+                    BufferRecipeCard(buffer: $buffer) {
+                        buffers.removeAll { $0.id == buffer.id }
+                    }
+                }
+            }
+        }
+        .onChange(of: buffers) { _ in persist() }
+    }
+
+    private func addBuffer() {
+        buffers.append(BufferRecipe(components: [BufferComponent()]))
+    }
+
     // MARK: - Reagents
 
     private var reagentsSection: some View {
@@ -223,6 +257,7 @@ struct ProtocolEditorView: View {
                 sectionHeader("Steps", systemImage: "list.number")
                 Spacer()
                 Menu {
+                    Button("Add Section") { addStep(kind: .section) }
                     Button("Add Step") { addStep(kind: .step) }
                     Button("Add Note") { addStep(kind: .note) }
                     Button("Add Warning") { addStep(kind: .warning) }
@@ -238,12 +273,13 @@ struct ProtocolEditorView: View {
             if steps.isEmpty {
                 emptyRow("No steps yet")
             } else {
+                // Only actual procedure steps get a number (restarting under each section) —
+                // notes/warnings are callouts and sections are headings.
+                let numbers = steps.stepNumbers
                 ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
-                    // Only actual procedure steps get a number — notes/warnings are callouts.
-                    let ordinal = steps[...index].filter { $0.kind == .step }.count
                     StepRow(
                         step: $steps[index],
-                        number: ordinal,
+                        number: numbers[index],
                         draggedStepID: $draggedStepID,
                         onDelete: { removeStep(at: index) }
                     )
@@ -419,6 +455,7 @@ struct ProtocolEditorView: View {
         guard let currentProtocol else { return }
         name = currentProtocol.name
         purpose = currentProtocol.purpose
+        buffers = currentProtocol.buffers
         reagents = currentProtocol.reagents
         steps = currentProtocol.steps
         tags = currentProtocol.tags
@@ -429,6 +466,7 @@ struct ProtocolEditorView: View {
         guard var updated = currentProtocol else { return }
         updated.name = name
         updated.purpose = purpose
+        updated.buffers = buffers
         updated.reagents = reagents
         updated.steps = steps
         updated.tags = tags
@@ -548,6 +586,7 @@ private struct StepRow: View {
         switch step.kind {
         case .note: return .blue
         case .warning: return .orange
+        case .section: return nil
         case .step:
             switch step.importance {
             case .critical: return .red
@@ -559,7 +598,7 @@ private struct StepRow: View {
 
     private var calloutLabel: String? {
         switch step.kind {
-        case .step: return nil
+        case .step, .section: return nil
         case .note: return "NOTE"
         case .warning: return "WARNING"
         }
@@ -594,31 +633,79 @@ private struct StepRow: View {
                 .foregroundStyle(.white)
                 .frame(width: 18, height: 18)
                 .background(Circle().fill(Color.orange))
+        case .section:
+            Image(systemName: "text.badge.plus")
+                .font(.system(size: 10))
+                .foregroundStyle(theme.accentDeep)
+                .frame(width: 18, height: 18)
+                .background(Circle().fill(theme.secondaryAccent.opacity(0.25)))
         }
     }
 
     var body: some View {
+        if step.kind == .section {
+            sectionBody
+        } else {
+            stepBody
+        }
+    }
+
+    private var dragHandle: some View {
+        Image(systemName: "line.3.horizontal")
+            .font(.system(size: 10))
+            .foregroundStyle(theme.textSecondary)
+            .help("Drag to reorder")
+            .onDrag {
+                draggedStepID = step.id
+                return NSItemProvider(object: step.id.uuidString as NSString)
+            }
+    }
+
+    private var kindMenu: some View {
+        Menu {
+            ForEach(StepKind.allCases, id: \.self) { kind in
+                Button(kind.label) { step.kind = kind }
+            }
+        } label: {
+            kindBadge
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Change type: Section, Step, Note, or Warning")
+    }
+
+    /// A heading that groups the steps below it — no card, just a title and a rule, so it reads
+    /// as structure rather than as one more step.
+    private var sectionBody: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center, spacing: 10) {
+                dragHandle
+                kindMenu
+                TextField("Section title (e.g. Day 1 — Cell prep)", text: $step.text)
+                    .textFieldStyle(.plain)
+                    .font(theme.displayFont(16))
+                    .foregroundStyle(theme.textPrimary)
+                Button(action: onDelete) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.textSecondary)
+            }
+            Rectangle()
+                .fill(theme.accentDeep.opacity(0.4))
+                .frame(height: 1.5)
+        }
+        .padding(.top, 10)
+        .padding(.horizontal, 10)
+        .padding(.bottom, 2)
+    }
+
+    private var stepBody: some View {
         HStack(alignment: .top, spacing: 10) {
             VStack(spacing: 6) {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 10))
-                    .foregroundStyle(theme.textSecondary)
-                    .help("Drag to reorder")
-                    .onDrag {
-                        draggedStepID = step.id
-                        return NSItemProvider(object: step.id.uuidString as NSString)
-                    }
-
-                Menu {
-                    ForEach(StepKind.allCases, id: \.self) { kind in
-                        Button(kind.label) { step.kind = kind }
-                    }
-                } label: {
-                    kindBadge
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .help("Change type: Step, Note, or Warning")
+                dragHandle
+                kindMenu
             }
             .padding(.top, 2)
 

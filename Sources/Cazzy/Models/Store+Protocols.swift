@@ -59,6 +59,7 @@ extension NoteStore {
         let snapshot = version.snapshot
         protocols[idx].name = snapshot.name
         protocols[idx].purpose = snapshot.purpose
+        protocols[idx].buffers = snapshot.buffers
         protocols[idx].reagents = snapshot.reagents
         protocols[idx].steps = snapshot.steps
         protocols[idx].tags = snapshot.tags

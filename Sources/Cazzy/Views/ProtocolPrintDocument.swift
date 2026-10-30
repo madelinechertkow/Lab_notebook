@@ -15,6 +15,9 @@ struct ProtocolPrintView: View {
                 Text(protocolItem.purpose)
                     .font(.system(size: 12))
             }
+            if !protocolItem.buffers.isEmpty {
+                buffersSection
+            }
             if !protocolItem.reagents.isEmpty {
                 materialsSection
             }
@@ -41,6 +44,67 @@ struct ProtocolPrintView: View {
             .font(.system(size: 11))
             .foregroundStyle(Color.gray)
         }
+    }
+
+    private var buffersSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Buffers & Solutions")
+                .font(.system(size: 14, weight: .semibold))
+            ForEach(protocolItem.buffers) { buffer in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(buffer.name.isEmpty ? "Untitled buffer" : buffer.name)
+                            .font(.system(size: 12, weight: .semibold))
+                        if !buffer.finalVolume.isEmpty {
+                            Text("makes \(buffer.finalVolume)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.gray)
+                        }
+                    }
+                    if !buffer.components.isEmpty {
+                        HStack(spacing: 12) {
+                            Text("Component").frame(width: 170, alignment: .leading)
+                            Text("Stock").frame(width: 70, alignment: .leading)
+                            Text("Final").frame(width: 70, alignment: .leading)
+                            Text("Add").frame(width: 80, alignment: .leading)
+                            Spacer(minLength: 0)
+                        }
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.gray)
+                        ForEach(buffer.components) { component in
+                            VStack(spacing: 0) {
+                                HStack(alignment: .top, spacing: 12) {
+                                    Text(component.name).frame(width: 170, alignment: .leading)
+                                    Text(component.stockConcentration).frame(width: 70, alignment: .leading)
+                                    Text(component.finalConcentration).frame(width: 70, alignment: .leading)
+                                    Text(buffer.displayAmount(for: component)).frame(width: 80, alignment: .leading)
+                                    Spacer(minLength: 0)
+                                }
+                                .font(.system(size: 11))
+                                .padding(.vertical, 3)
+                                Divider()
+                            }
+                        }
+                    }
+                    if !buffer.finalVolume.isEmpty || !buffer.solvent.isEmpty {
+                        Text(bringToVolumeLine(buffer))
+                            .font(.system(size: 11))
+                    }
+                    if !buffer.instructions.isEmpty {
+                        Text(buffer.instructions)
+                            .font(.system(size: 11))
+                            .italic()
+                    }
+                }
+            }
+        }
+    }
+
+    private func bringToVolumeLine(_ buffer: BufferRecipe) -> String {
+        var line = "Bring to \(buffer.finalVolume.isEmpty ? "volume" : buffer.finalVolume)"
+        if !buffer.solvent.isEmpty { line += " with \(buffer.solvent)" }
+        if let solventVolume = buffer.solventVolume { line += " (≈ \(solventVolume))" }
+        return line + "."
     }
 
     private var materialsSection: some View {
@@ -72,13 +136,20 @@ struct ProtocolPrintView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Procedure")
                 .font(.system(size: 14, weight: .semibold))
+            let numbers = protocolItem.steps.stepNumbers
             ForEach(Array(protocolItem.steps.enumerated()), id: \.element.id) { index, step in
-                let ordinal = protocolItem.steps[...index].filter { $0.kind == .step }.count
                 switch step.kind {
                 case .step:
-                    stepRow(ordinal: ordinal, step: step)
+                    stepRow(ordinal: numbers[index], step: step)
                 case .note, .warning:
                     calloutRow(step: step)
+                case .section:
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(step.text.isEmpty ? "Section" : step.text)
+                            .font(.system(size: 13, weight: .bold))
+                        Rectangle().fill(Color.black).frame(height: 1)
+                    }
+                    .padding(.top, 6)
                 }
             }
         }

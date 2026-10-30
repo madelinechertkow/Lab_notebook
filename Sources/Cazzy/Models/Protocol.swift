@@ -29,18 +29,124 @@ struct Reagent: Identifiable, Codable, Equatable {
     }
 }
 
-/// Whether a `ProtocolStep` is an actual numbered procedure step, or a standalone callout
-/// (not numbered) meant to interrupt the flow and catch the reader's eye.
+/// One ingredient of a `BufferRecipe`. Concentrations are free text ("1 M", "50 mM", "10X",
+/// "0.5 mg/mL") so nothing is lost if `BufferMath` can't parse them; it only uses them to
+/// suggest an amount when `amount` is left blank.
+struct BufferComponent: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    var name: String
+    var stockConcentration: String = ""
+    var finalConcentration: String = ""
+    /// What the user typed for "amount to add". Empty means "use the calculated amount".
+    var amount: String = ""
+
+    init(id: UUID = UUID(), name: String = "", stockConcentration: String = "", finalConcentration: String = "", amount: String = "") {
+        self.id = id
+        self.name = name
+        self.stockConcentration = stockConcentration
+        self.finalConcentration = finalConcentration
+        self.amount = amount
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, stockConcentration, finalConcentration, amount
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        stockConcentration = try container.decodeIfPresent(String.self, forKey: .stockConcentration) ?? ""
+        finalConcentration = try container.decodeIfPresent(String.self, forKey: .finalConcentration) ?? ""
+        amount = try container.decodeIfPresent(String.self, forKey: .amount) ?? ""
+    }
+}
+
+/// How to make a buffer or solution the protocol needs — an optional section shown before
+/// Materials & Reagents. A protocol with no buffers simply has an empty `buffers` array.
+struct BufferRecipe: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    var name: String
+    /// Total volume to make, e.g. "500 mL" — what component amounts are calculated against.
+    var finalVolume: String = ""
+    /// What to bring the buffer up to volume with, e.g. "Milli-Q water".
+    var solvent: String = ""
+    var components: [BufferComponent] = []
+    /// Free-form preparation notes: pH adjustment, filtering, autoclaving, storage.
+    var instructions: String = ""
+
+    init(id: UUID = UUID(), name: String = "", finalVolume: String = "", solvent: String = "", components: [BufferComponent] = [], instructions: String = "") {
+        self.id = id
+        self.name = name
+        self.finalVolume = finalVolume
+        self.solvent = solvent
+        self.components = components
+        self.instructions = instructions
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, finalVolume, solvent, components, instructions
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        finalVolume = try container.decodeIfPresent(String.self, forKey: .finalVolume) ?? ""
+        solvent = try container.decodeIfPresent(String.self, forKey: .solvent) ?? ""
+        components = try container.decodeIfPresent([BufferComponent].self, forKey: .components) ?? []
+        instructions = try container.decodeIfPresent(String.self, forKey: .instructions) ?? ""
+    }
+
+    /// The amount to show for a component: what the user typed, else the calculated amount.
+    func displayAmount(for component: BufferComponent) -> String {
+        let typed = component.amount.trimmingCharacters(in: .whitespaces)
+        if !typed.isEmpty { return typed }
+        return BufferMath.amountToAdd(stock: component.stockConcentration, final: component.finalConcentration, totalVolume: finalVolume) ?? ""
+    }
+
+    /// Roughly how much solvent is needed to reach `finalVolume`, when every component's amount
+    /// is a liquid volume. nil when that can't be worked out (e.g. a powder measured in grams).
+    var solventVolume: String? {
+        BufferMath.remainingVolume(total: finalVolume, components: components.map(displayAmount(for:)))
+    }
+}
+
+/// Whether a `ProtocolStep` is an actual numbered procedure step, a standalone callout
+/// (not numbered) meant to interrupt the flow and catch the reader's eye, or a section
+/// heading that groups the steps after it (numbering restarts under each section).
 enum StepKind: String, Codable, CaseIterable, Equatable {
     case step
     case note
     case warning
+    case section
 
     var label: String {
         switch self {
         case .step: return "Step"
         case .note: return "Note"
         case .warning: return "Warning"
+        case .section: return "Section"
+        }
+    }
+}
+
+extension Array where Element == ProtocolStep {
+    /// The number shown beside each element — 0 for anything that isn't a numbered step.
+    /// Numbering restarts after every section heading, so each section reads 1, 2, 3…
+    var stepNumbers: [Int] {
+        var counter = 0
+        return map { step in
+            switch step.kind {
+            case .section:
+                counter = 0
+                return 0
+            case .step:
+                counter += 1
+                return counter
+            case .note, .warning:
+                return 0
+            }
         }
     }
 }
@@ -108,18 +214,20 @@ struct ProtocolStep: Identifiable, Codable, Equatable {
 struct ProtocolVersionSnapshot: Codable, Equatable {
     var name: String
     var purpose: String
+    var buffers: [BufferRecipe]
     var reagents: [Reagent]
     var steps: [ProtocolStep]
     var tags: [String]
     var manualTotalMinutes: Int?
 
     enum CodingKeys: String, CodingKey {
-        case name, purpose, reagents, steps, tags, manualTotalMinutes
+        case name, purpose, buffers, reagents, steps, tags, manualTotalMinutes
     }
 
-    init(name: String, purpose: String = "", reagents: [Reagent] = [], steps: [ProtocolStep] = [], tags: [String] = [], manualTotalMinutes: Int? = nil) {
+    init(name: String, purpose: String = "", buffers: [BufferRecipe] = [], reagents: [Reagent] = [], steps: [ProtocolStep] = [], tags: [String] = [], manualTotalMinutes: Int? = nil) {
         self.name = name
         self.purpose = purpose
+        self.buffers = buffers
         self.reagents = reagents
         self.steps = steps
         self.tags = tags
@@ -130,6 +238,7 @@ struct ProtocolVersionSnapshot: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = try container.decode(String.self, forKey: .name)
         purpose = try container.decodeIfPresent(String.self, forKey: .purpose) ?? ""
+        buffers = try container.decodeIfPresent([BufferRecipe].self, forKey: .buffers) ?? []
         reagents = try container.decodeIfPresent([Reagent].self, forKey: .reagents) ?? []
         steps = try container.decodeIfPresent([ProtocolStep].self, forKey: .steps) ?? []
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
@@ -172,6 +281,8 @@ struct LabProtocol: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var name: String
     var purpose: String = ""
+    /// Optional buffer/solution recipes, shown before Materials & Reagents.
+    var buffers: [BufferRecipe] = []
     var reagents: [Reagent] = []
     var steps: [ProtocolStep] = []
     var tags: [String] = []
@@ -189,6 +300,7 @@ struct LabProtocol: Identifiable, Codable, Equatable {
         id: UUID = UUID(),
         name: String,
         purpose: String = "",
+        buffers: [BufferRecipe] = [],
         reagents: [Reagent] = [],
         steps: [ProtocolStep] = [],
         tags: [String] = [],
@@ -201,6 +313,7 @@ struct LabProtocol: Identifiable, Codable, Equatable {
         self.id = id
         self.name = name
         self.purpose = purpose
+        self.buffers = buffers
         self.reagents = reagents
         self.steps = steps
         self.tags = tags
@@ -212,7 +325,7 @@ struct LabProtocol: Identifiable, Codable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, purpose, reagents, steps, tags, manualTotalMinutes, createdAt, updatedAt, versions, currentVersionNumber
+        case id, name, purpose, buffers, reagents, steps, tags, manualTotalMinutes, createdAt, updatedAt, versions, currentVersionNumber
     }
 
     init(from decoder: Decoder) throws {
@@ -220,6 +333,7 @@ struct LabProtocol: Identifiable, Codable, Equatable {
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         name = try container.decode(String.self, forKey: .name)
         purpose = try container.decodeIfPresent(String.self, forKey: .purpose) ?? ""
+        buffers = try container.decodeIfPresent([BufferRecipe].self, forKey: .buffers) ?? []
         reagents = try container.decodeIfPresent([Reagent].self, forKey: .reagents) ?? []
         steps = try container.decodeIfPresent([ProtocolStep].self, forKey: .steps) ?? []
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
@@ -231,7 +345,7 @@ struct LabProtocol: Identifiable, Codable, Equatable {
     }
 
     var draftSnapshot: ProtocolVersionSnapshot {
-        ProtocolVersionSnapshot(name: name, purpose: purpose, reagents: reagents, steps: steps, tags: tags, manualTotalMinutes: manualTotalMinutes)
+        ProtocolVersionSnapshot(name: name, purpose: purpose, buffers: buffers, reagents: reagents, steps: steps, tags: tags, manualTotalMinutes: manualTotalMinutes)
     }
 
     /// Sum of the durations entered on numbered steps (notes/warnings excluded).

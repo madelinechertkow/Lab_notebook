@@ -49,9 +49,9 @@ Data is stored as a single JSON blob in `~/Library/Application Support/Cazzy/dat
 
 ### Box backup
 
-Settings → **Box Backup** mirrors every entry into a folder you choose (normally
-inside Box Drive, `~/Library/CloudStorage/Box-Box`) as
-`<Notebook>/<yyyy-MM-dd> <Title>.md`, with inserted images in
-`<Notebook>/images/`. Box Drive does the uploading — no Box API credentials are
-involved. Changed entries are rewritten a few seconds after you stop typing;
-renamed entries have their file moved; deleted entries keep their backup file.
+Settings → **Box Backup** mirrors everything into a `Cazzy/` subfolder of a
+folder you choose (normally inside Box Drive, `~/Library/CloudStorage/Box-Box`):
+`Cazzy/<Notebook>/<yyyy-MM-dd> <Title>.md` (a folder per notebook, images in
+`<Notebook>/images/`) and `Cazzy/Protocol Library/<Protocol>.md`. Box Drive does
+the uploading — no Box API credentials are involved. Changed items are
+rewritten a few seconds after you stop typing; renamed entries have their file moved; deleted entries keep their backup file.

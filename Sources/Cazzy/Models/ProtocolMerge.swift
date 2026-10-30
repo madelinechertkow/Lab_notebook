@@ -119,12 +119,17 @@ enum ProtocolMerge {
             : (purposeChoice == .imported ? result.imported.purpose : result.local.purpose)
 
         let reagents = resolveItems(result.reagentDiffs, choices: reagentChoices, includedIDs: includedReagentIDs)
+        // Buffers don't get their own conflict UI: every buffer from either side is kept, and
+        // where both sides edited the same recipe, the local one wins.
+        let bufferDiffs = diffItems(local: result.local.buffers, imported: result.imported.buffers)
+        let allBufferIDs = Set(result.local.buffers.map(\.id)).union(result.imported.buffers.map(\.id))
+        let buffers = resolveItems(bufferDiffs, choices: [:], includedIDs: allBufferIDs)
         let steps = resolveItems(result.stepDiffs, choices: stepChoices, includedIDs: includedStepIDs)
 
         // Total-time override isn't worth its own conflict UI: keep local's, fall back to imported's.
         let manualTotalMinutes = result.local.manualTotalMinutes ?? result.imported.manualTotalMinutes
 
-        return ProtocolVersionSnapshot(name: name, purpose: purpose, reagents: reagents, steps: steps, tags: result.tags, manualTotalMinutes: manualTotalMinutes)
+        return ProtocolVersionSnapshot(name: name, purpose: purpose, buffers: buffers, reagents: reagents, steps: steps, tags: result.tags, manualTotalMinutes: manualTotalMinutes)
     }
 
     private static func resolveItems<T: Identifiable & Equatable>(

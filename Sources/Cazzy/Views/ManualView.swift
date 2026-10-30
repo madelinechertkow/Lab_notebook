@@ -218,9 +218,26 @@ enum ManualContent {
 
     ## Building a protocol
 
-    A protocol has a **name**, a **purpose**, a list of **Materials & Reagents** (name/amount/unit/notes), and a list of **Steps**. Each step is one of three kinds — a numbered **Step**, or a non-numbered **Note** or **Warning** callout for things that interrupt the flow rather than being an actual procedure step. Steps additionally have an **importance** (Normal / Important / Critical, shown as a colored flag), and optional duration, temperature, and notes.
+    A protocol has a **name**, a **purpose**, optional **Buffers & Solutions**, a list of **Materials & Reagents** (name/amount/unit/notes), and a list of **Steps**. Each item in Steps is one of four kinds — a numbered **Step**, a non-numbered **Note** or **Warning** callout for things that interrupt the flow rather than being an actual procedure step, or a **Section** heading. Steps additionally have an **importance** (Normal / Important / Critical, shown as a colored flag), and optional duration, temperature, and notes.
 
     Drag the handle on any step or reagent row to reorder it.
+
+    ## Sections
+
+    Long protocols can be split into sections — "Day 1 — Cell prep", "Day 2 — Tagmentation", and so on. Choose **Add Section** from the **+** menu next to Steps, then type the heading. Every step below a section heading belongs to it until the next heading, and step numbers start again at 1 under each section. Sections drag around like any other step; to turn an existing step into a section heading (or back), click its badge and pick a different type.
+
+    Sections carry through everywhere the protocol goes: the printout, the Box backup, and the checklist in a notebook entry created from a scheduled experiment.
+
+    ## Buffers & Solutions
+
+    This section sits above Materials & Reagents and is entirely optional — a protocol that doesn't need buffers made up beforehand just leaves it empty. Click its **+** to add a recipe, which has:
+
+    - A **name** and how much it **makes** (e.g. "500 mL").
+    - A table of **components**, each with a **stock** and a **final** concentration. Leave **Amount to add** blank and Cazzy works it out for you (C₁V₁ = C₂V₂) — e.g. 1 M stock to 50 mM final in 500 mL shows **25 mL**. It understands M, mM, µM, nM, X, %, g/L, mg/mL, µg/mL, ng/µL and U/mL; stock and final need to be in the same kind of unit. Change the "makes" volume and every amount updates. To use your own amount instead (e.g. "2.92 g" of a powder), just type it.
+    - **Bring to volume with** — the solvent, e.g. "Milli-Q water". When every amount is a liquid volume, Cazzy also shows roughly how much solvent that is.
+    - **Preparation** notes — pH adjustment, filtering, autoclaving, storage.
+
+    Buffers are included when you print, back up to Box, save a version, or export the protocol.
 
     At the bottom of the Steps section, Cazzy totals up the duration from your steps automatically, but you can also set an explicit **override** — this override (when set) is what's used as the protocol's duration when you schedule it as an experiment.
 
@@ -234,7 +251,7 @@ enum ManualContent {
 
     ## Printing
 
-    Click **Print** for a clean, black-and-white printout (or "Save as PDF" from the print panel) — regardless of your current theme, so a printed protocol stays legible on paper. It includes the reagent table, numbered steps with their duration/temperature/importance, and Note/Warning callouts as colored side-bar blocks.
+    Click **Print** for a clean, black-and-white printout (or "Save as PDF" from the print panel) — regardless of your current theme, so a printed protocol stays legible on paper. It includes your buffer recipes (with calculated amounts filled in), the reagent table, section headings, numbered steps with their duration/temperature/importance, and Note/Warning callouts as colored side-bar blocks.
 
     ## Sharing a protocol with someone else
 
@@ -381,6 +398,15 @@ enum ManualContent {
     Everything — notebooks, notes, protocols, plate maps, gel ladders, the paper tracker, your to-do list, scheduled experiments — is stored in one file on your Mac, and saved to disk immediately after every change (there's nothing to remember to save).
 
     If that file is ever unreadable when Cazzy launches — most likely after an app update changed something incompatibly — Cazzy does **not** overwrite or discard it. It backs up the unreadable file untouched under a new name in the same folder, shows you a one-time alert explaining exactly where that backup went, and shows sample notebooks in the meantime rather than silently presenting an empty (or wrong) notebook as if nothing happened.
+
+    ## Backing up to Box
+
+    In **Settings → Box Backup**, turn on **Back up all entries to Box** and choose a folder inside Box. Cazzy creates a **Cazzy** folder there and keeps it up to date, and the Box desktop app uploads it:
+
+    - One folder per notebook (created even while it's empty), with each entry saved as a Markdown file named by date and title — images you inserted go in that notebook's **images** folder.
+    - A **Protocol Library** folder with each protocol as a readable document: buffers, materials, sections and steps.
+
+    Changes are backed up a few seconds after you stop typing, and only what changed is rewritten. Renaming an entry or moving it to another notebook moves its file too. Deleting something in Cazzy does **not** delete its backup, so Box keeps a lasting record. **Choose Folder…** changes where backups go; **Back Up Now** runs one immediately.
     """
 
     static let shortcuts = """

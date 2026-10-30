@@ -226,7 +226,7 @@ private struct BoxBackupSection: View {
                         guard chooseFolder() else { return }
                     }
                     backup.setEnabled(enabled)
-                    if enabled { backup.backUpNow(notes: store.notes, notebooks: store.notebooks) }
+                    if enabled { backup.backUpNow(notes: store.notes, notebooks: store.notebooks, protocols: store.protocols) }
                 }
             ))
             HStack {
@@ -238,7 +238,7 @@ private struct BoxBackupSection: View {
                 Spacer()
                 Button("Choose Folder…") {
                     if chooseFolder(), backup.isEnabled {
-                        backup.backUpNow(notes: store.notes, notebooks: store.notebooks)
+                        backup.backUpNow(notes: store.notes, notebooks: store.notebooks, protocols: store.protocols)
                     }
                 }
             }
@@ -246,11 +246,11 @@ private struct BoxBackupSection: View {
                 statusText
                 Spacer()
                 Button("Back Up Now") {
-                    backup.backUpNow(notes: store.notes, notebooks: store.notebooks)
+                    backup.backUpNow(notes: store.notes, notebooks: store.notebooks, protocols: store.protocols)
                 }
                 .disabled(backup.folderURL == nil || backup.isBackingUp)
             }
-            Text("Each entry is saved as a Markdown file in a subfolder per notebook, and Box Drive uploads it. Changes are backed up a few seconds after you stop typing. Deleting an entry here doesn't delete its backup.")
+            Text("Everything goes in a \"Cazzy\" folder inside the one you choose: a folder per notebook with each entry as a Markdown file, plus your protocols in \"Protocol Library\". Box Drive uploads them. Changes are backed up a few seconds after you stop typing. Deleting an entry here doesn't delete its backup.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }

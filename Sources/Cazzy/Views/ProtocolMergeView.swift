@@ -64,7 +64,7 @@ struct ProtocolMergeView: View {
                         diffs: result.stepDiffs,
                         choices: $stepChoices,
                         included: $includedStepIDs,
-                        label: { $0.text }
+                        label: { $0.kind == .section ? "Section: \($0.text)" : $0.text }
                     )
                 }
                 .padding(20)

@@ -59,7 +59,7 @@ final class NoteStore: ObservableObject {
         self.syncToAppleCalendar = UserDefaults.standard.bool(forKey: "syncToAppleCalendar")
         load()
         // Catch up on anything that changed while backup was off or the folder was unreachable.
-        boxBackup.scheduleBackup(notes: notes, notebooks: notebooks)
+        boxBackup.scheduleBackup(notes: notes, notebooks: notebooks, protocols: protocols)
     }
 
     func setLabModeFilter(_ mode: LabModeFilter) {
@@ -251,7 +251,7 @@ final class NoteStore: ObservableObject {
         guard let data = try? JSONEncoder().encode(state) else { return }
         try? data.write(to: fileURL, options: .atomic)
         lastSavedState = state
-        boxBackup.scheduleBackup(notes: state.notes, notebooks: state.notebooks)
+        boxBackup.scheduleBackup(notes: state.notes, notebooks: state.notebooks, protocols: state.protocols)
     }
 
     // MARK: - Undo / Redo (⌘Z / ⇧⌘Z, app-wide)
