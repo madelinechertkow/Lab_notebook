@@ -40,12 +40,19 @@ extension LabProtocol {
         }
 
         if !reagents.isEmpty {
-            out += "## Materials & Reagents\n\n| Name | Amount | Notes |\n|---|---|---|\n"
-            for reagent in reagents {
-                let amount = [reagent.amount, reagent.unit].filter { !$0.isEmpty }.joined(separator: " ")
-                out += "| " + [reagent.name, amount, reagent.notes].map(Self.tableCell).joined(separator: " | ") + " |\n"
+            out += "## Materials & Reagents\n\n"
+            let groups: [(title: String?, reagents: [Reagent])] = reagents.isUncategorized
+                ? [(nil, reagents)]
+                : reagents.groupedByCategory.map { ($0.category.title, $0.reagents) }
+            for group in groups {
+                if let title = group.title { out += "### \(title)\n\n" }
+                out += "| Name | Amount | Notes |\n|---|---|---|\n"
+                for reagent in group.reagents {
+                    let amount = [reagent.amount, reagent.unit].filter { !$0.isEmpty }.joined(separator: " ")
+                    out += "| " + [reagent.name, amount, reagent.notes].map(Self.tableCell).joined(separator: " | ") + " |\n"
+                }
+                out += "\n"
             }
-            out += "\n"
         }
 
         if !steps.isEmpty {

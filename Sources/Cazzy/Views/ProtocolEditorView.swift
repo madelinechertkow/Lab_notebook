@@ -23,6 +23,7 @@ struct ProtocolEditorView: View {
     @State private var versionPendingRestore: ProtocolVersion?
     @State private var exportErrorMessage: String?
     @State private var draggedStepID: UUID?
+    @State private var draggedReagentID: UUID?
 
     private var currentProtocol: LabProtocol? {
         store.protocols.first(where: { $0.id == protocolID })
@@ -223,30 +224,108 @@ struct ProtocolEditorView: View {
             HStack {
                 sectionHeader("Materials & Reagents", systemImage: "cross.vial")
                 Spacer()
-                addButton { addReagent() }
+                Menu {
+                    ForEach(MaterialCategory.allCases.filter { $0 != .uncategorized }) { category in
+                        Button {
+                            addReagent(category: category)
+                        } label: {
+                            Label(category.title, systemImage: category.systemImage)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 14))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.accentDeep)
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Add a material — pick what kind it is")
             }
             if reagents.isEmpty {
-                emptyRow("No reagents yet")
+                emptyRow("No materials yet")
             } else {
-                ForEach(reagents.indices, id: \.self) { index in
-                    ReagentRow(reagent: $reagents[index]) {
-                        removeReagent(at: index)
+                // While dragging, every category is shown (empty ones too) so any of them can be
+                // dropped onto. Otherwise only the categories in use — and no headings at all
+                // while nothing is categorized, so an old protocol looks the way it always did.
+                let showHeadings = draggedReagentID != nil || !reagents.isUncategorized
+                let groups: [MaterialCategory] = draggedReagentID != nil
+                    ? MaterialCategory.allCases
+                    : reagents.groupedByCategory.map(\.category)
+                ForEach(groups) { category in
+                    VStack(alignment: .leading, spacing: 6) {
+                        if showHeadings {
+                            categoryHeading(category)
+                        }
+                        ForEach(reagents.filter { $0.category == category }) { reagent in
+                            if let binding = binding(forReagent: reagent.id) {
+                                reagentRow(binding)
+                                    .onDrop(of: [.text], delegate: ReagentDropDelegate(target: .reagent(reagent.id), reagents: $reagents, draggedReagentID: $draggedReagentID, onFinished: persist))
+                            }
+                        }
                     }
                 }
             }
         }
-        .onChange(of: reagents) { _ in persist() }
+        .onChange(of: reagents) { _ in
+            // Same as steps: no disk writes for every row a drag passes over; the drop (or
+            // `watchForDragEnd`) persists once.
+            guard draggedReagentID == nil else { return }
+            persist()
+        }
     }
 
-    private func addReagent() {
-        reagents.append(Reagent(name: ""))
-        persist()
+    private func categoryHeading(_ category: MaterialCategory) -> some View {
+        let isEmpty = !reagents.contains { $0.category == category }
+        return Label(category.title, systemImage: category.systemImage)
+            .font(theme.bodyFont(11, weight: .semibold))
+            .foregroundStyle(theme.textTertiary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 4)
+            .padding(.vertical, isEmpty ? 6 : 0)
+            .padding(.horizontal, isEmpty ? 6 : 0)
+            .background {
+                if isEmpty {
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(theme.textTertiary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                }
+            }
+            .contentShape(Rectangle())
+            .onDrop(of: [.text], delegate: ReagentDropDelegate(target: .category(category), reagents: $reagents, draggedReagentID: $draggedReagentID, onFinished: persist))
     }
 
-    private func removeReagent(at index: Int) {
-        guard reagents.indices.contains(index) else { return }
-        reagents.remove(at: index)
-        persist()
+    private func reagentRow(_ reagent: Binding<Reagent>) -> some View {
+        let id = reagent.wrappedValue.id
+        return ReagentRow(reagent: reagent, onDragStart: {
+            draggedReagentID = id
+            watchForDragEnd()
+        }) {
+            reagents.removeAll { $0.id == id }
+        }
+    }
+
+    /// A drag dropped outside any material drop target never reaches a `performDrop`, which
+    /// would leave the editor stuck showing every empty category. Once the mouse button is
+    /// released, give a real drop a moment to land, then end the drag ourselves.
+    private func watchForDragEnd() {
+        Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { timer in
+            guard NSEvent.pressedMouseButtons == 0 else { return }
+            timer.invalidate()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                guard draggedReagentID != nil else { return }
+                draggedReagentID = nil
+                persist()
+            }
+        }
+    }
+
+    private func binding(forReagent id: UUID) -> Binding<Reagent>? {
+        guard let index = reagents.firstIndex(where: { $0.id == id }) else { return nil }
+        return $reagents[index]
+    }
+
+    private func addReagent(category: MaterialCategory) {
+        reagents.append(Reagent(name: "", category: category))
     }
 
     // MARK: - Steps
@@ -495,11 +574,37 @@ struct ProtocolEditorView: View {
 private struct ReagentRow: View {
     @EnvironmentObject var theme: ThemeStore
     @Binding var reagent: Reagent
+    let onDragStart: () -> Void
     let onDelete: () -> Void
     @State private var isHovering = false
 
     var body: some View {
         HStack(spacing: 8) {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 10))
+                .foregroundStyle(theme.textSecondary)
+                .help("Drag to reorder, or onto another category to move it there")
+                .onDrag {
+                    onDragStart()
+                    return NSItemProvider(object: reagent.id.uuidString as NSString)
+                }
+            Menu {
+                Picker("Category", selection: $reagent.category) {
+                    ForEach(MaterialCategory.allCases) { category in
+                        Label(category.title, systemImage: category.systemImage).tag(category)
+                    }
+                }
+                .pickerStyle(.inline)
+            } label: {
+                Image(systemName: reagent.category.systemImage)
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(reagent.category == .uncategorized ? theme.textTertiary : theme.accentDeep)
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Category: \(reagent.category.title) — click to change")
             TextField("Name", text: $reagent.name)
                 .textFieldStyle(.plain)
                 .font(theme.bodyFont(12, weight: .medium))
@@ -829,6 +934,54 @@ private struct StepDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         draggedStepID = nil
+        onFinished()
+        return true
+    }
+}
+
+/// Moves the dragged material live as it passes over a drop target: over another material it
+/// takes that material's place (and category); over a category heading it joins the end of
+/// that category. Like `StepDropDelegate`, only the drag handle starts a drag.
+private struct ReagentDropDelegate: DropDelegate {
+    enum Target {
+        case reagent(UUID)
+        case category(MaterialCategory)
+    }
+
+    let target: Target
+    @Binding var reagents: [Reagent]
+    @Binding var draggedReagentID: UUID?
+    let onFinished: () -> Void
+
+    func dropEntered(info: DropInfo) {
+        guard let draggedReagentID,
+              let fromIndex = reagents.firstIndex(where: { $0.id == draggedReagentID }) else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            switch target {
+            case .reagent(let targetID):
+                guard targetID != draggedReagentID,
+                      let toIndex = reagents.firstIndex(where: { $0.id == targetID }) else { return }
+                reagents[fromIndex].category = reagents[toIndex].category
+                reagents.move(
+                    fromOffsets: IndexSet(integer: fromIndex),
+                    toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex
+                )
+            case .category(let category):
+                guard reagents[fromIndex].category != category else { return }
+                var moved = reagents.remove(at: fromIndex)
+                moved.category = category
+                let insertAt = reagents.lastIndex(where: { $0.category == category }).map { $0 + 1 } ?? reagents.endIndex
+                reagents.insert(moved, at: insertAt)
+            }
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggedReagentID = nil
         onFinished()
         return true
     }

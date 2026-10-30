@@ -111,22 +111,38 @@ struct ProtocolPrintView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Materials & Reagents")
                 .font(.system(size: 14, weight: .semibold))
-            VStack(spacing: 0) {
-                ForEach(protocolItem.reagents) { reagent in
-                    VStack(spacing: 0) {
-                        HStack(alignment: .top, spacing: 12) {
-                            Text(reagent.name)
-                                .frame(width: 160, alignment: .leading)
-                            Text([reagent.amount, reagent.unit].filter { !$0.isEmpty }.joined(separator: " "))
-                                .frame(width: 100, alignment: .leading)
-                            Text(reagent.notes)
-                                .foregroundStyle(Color.gray)
-                            Spacer(minLength: 0)
-                        }
-                        .font(.system(size: 11))
-                        .padding(.vertical, 4)
-                        Divider()
+            if protocolItem.reagents.isUncategorized {
+                materialRows(protocolItem.reagents)
+            } else {
+                ForEach(protocolItem.reagents.groupedByCategory, id: \.category) { group in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(group.category.title)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.gray)
+                            .padding(.top, 4)
+                        materialRows(group.reagents)
                     }
+                }
+            }
+        }
+    }
+
+    private func materialRows(_ reagents: [Reagent]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(reagents) { reagent in
+                VStack(spacing: 0) {
+                    HStack(alignment: .top, spacing: 12) {
+                        Text(reagent.name)
+                            .frame(width: 160, alignment: .leading)
+                        Text([reagent.amount, reagent.unit].filter { !$0.isEmpty }.joined(separator: " "))
+                            .frame(width: 100, alignment: .leading)
+                        Text(reagent.notes)
+                            .foregroundStyle(Color.gray)
+                        Spacer(minLength: 0)
+                    }
+                    .font(.system(size: 11))
+                    .padding(.vertical, 4)
+                    Divider()
                 }
             }
         }

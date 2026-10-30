@@ -1,22 +1,61 @@
 import Foundation
 
+/// What kind of thing a material is, so the Materials list can be grouped. `.uncategorized`
+/// is what every material saved before categories existed decodes to.
+enum MaterialCategory: String, Codable, CaseIterable, Identifiable {
+    case chemicals, antibodies, biological, kits, consumables, equipment, software, other
+    case uncategorized
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .chemicals: return "Chemicals & Reagents"
+        case .antibodies: return "Antibodies"
+        case .biological: return "Cells & Biological"
+        case .kits: return "Kits"
+        case .consumables: return "Consumables"
+        case .equipment: return "Equipment & Machines"
+        case .software: return "Software"
+        case .other: return "Other"
+        case .uncategorized: return "Uncategorized"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .chemicals: return "flask"
+        case .antibodies: return "y.circle"
+        case .biological: return "allergens"
+        case .kits: return "shippingbox"
+        case .consumables: return "testtube.2"
+        case .equipment: return "gearshape.2"
+        case .software: return "desktopcomputer"
+        case .other: return "square.grid.2x2"
+        case .uncategorized: return "questionmark.circle"
+        }
+    }
+}
+
 struct Reagent: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var name: String
     var amount: String
     var unit: String
     var notes: String = ""
+    var category: MaterialCategory = .uncategorized
 
-    init(id: UUID = UUID(), name: String, amount: String = "", unit: String = "", notes: String = "") {
+    init(id: UUID = UUID(), name: String, amount: String = "", unit: String = "", notes: String = "", category: MaterialCategory = .uncategorized) {
         self.id = id
         self.name = name
         self.amount = amount
         self.unit = unit
         self.notes = notes
+        self.category = category
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, amount, unit, notes
+        case id, name, amount, unit, notes, category
     }
 
     init(from decoder: Decoder) throws {
@@ -26,7 +65,24 @@ struct Reagent: Identifiable, Codable, Equatable {
         amount = try container.decodeIfPresent(String.self, forKey: .amount) ?? ""
         unit = try container.decodeIfPresent(String.self, forKey: .unit) ?? ""
         notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        // An unknown raw value (e.g. from a newer Cazzy) falls back rather than failing the load.
+        category = (try? container.decodeIfPresent(MaterialCategory.self, forKey: .category)) ?? .uncategorized
     }
+}
+
+extension Array where Element == Reagent {
+    /// Materials grouped by category in `MaterialCategory.allCases` order (uncategorized last),
+    /// keeping the user's order within each group. Empty groups are left out.
+    var groupedByCategory: [(category: MaterialCategory, reagents: [Reagent])] {
+        MaterialCategory.allCases.compactMap { category in
+            let members = filter { $0.category == category }
+            return members.isEmpty ? nil : (category, members)
+        }
+    }
+
+    /// True when grouping would add nothing — every material is still uncategorized — so
+    /// views can skip the group headings and look exactly as they did before categories.
+    var isUncategorized: Bool { allSatisfy { $0.category == .uncategorized } }
 }
 
 /// One ingredient of a `BufferRecipe`. Concentrations are free text ("1 M", "50 mM", "10X",

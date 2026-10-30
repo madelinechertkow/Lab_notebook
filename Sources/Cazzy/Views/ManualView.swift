@@ -218,7 +218,7 @@ enum ManualContent {
 
     ## Building a protocol
 
-    A protocol has a **name**, a **purpose**, optional **Buffers & Solutions**, a list of **Materials & Reagents** (name/amount/unit/notes), and a list of **Steps**. Each item in Steps is one of four kinds — a numbered **Step**, a non-numbered **Note** or **Warning** callout for things that interrupt the flow rather than being an actual procedure step, or a **Section** heading. Steps additionally have an **importance** (Normal / Important / Critical, shown as a colored flag), and optional duration, temperature, and notes.
+    A protocol has a **name**, a **purpose**, optional **Buffers & Solutions**, a list of **Materials & Reagents** (name/amount/unit/notes, plus a category), and a list of **Steps**. Each item in Steps is one of four kinds — a numbered **Step**, a non-numbered **Note** or **Warning** callout for things that interrupt the flow rather than being an actual procedure step, or a **Section** heading. Steps additionally have an **importance** (Normal / Important / Critical, shown as a colored flag), and optional duration, temperature, and notes.
 
     Drag the handle on any step or reagent row to reorder it.
 
@@ -227,6 +227,12 @@ enum ManualContent {
     Long protocols can be split into sections — "Day 1 — Cell prep", "Day 2 — Tagmentation", and so on. Choose **Add Section** from the **+** menu next to Steps, then type the heading. Every step below a section heading belongs to it until the next heading, and step numbers start again at 1 under each section. Sections drag around like any other step; to turn an existing step into a section heading (or back), click its badge and pick a different type.
 
     Sections carry through everywhere the protocol goes: the printout, the Box backup, and the checklist in a notebook entry created from a scheduled experiment.
+
+    ## Materials & Reagents
+
+    Click the **+** next to Materials & Reagents and pick what kind of material you're adding — Chemicals & Reagents, Antibodies, Cells & Biological, Kits, Consumables, Equipment & Machines, Software, or Other. Materials are then listed grouped under those headings, in that order, so the bench chemicals, the plasticware and the instruments you need to book each sit together. To move a material to a different group, either click the small category icon in its row and choose another, or grab its **≡** handle and drag it — onto another material to slot it in there (it takes on that material's category), or onto a category heading to add it to the end of that group. While you drag, every category is shown, including empty ones, so you can drop into any of them. Dragging within a group just reorders.
+
+    Materials added before categories existed show up as **Uncategorized** (with a grey icon) and keep their original order until you sort them. The same grouping is used in the printout and the Box backup.
 
     ## Buffers & Solutions
 
