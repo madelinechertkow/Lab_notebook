@@ -3,6 +3,21 @@ import AppKit
 
 final class CazzyAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Test-only: with a copy of the data (CAZZY_DATA_DIR) and CAZZY_RENDER_TEST_DIR set,
+        // write every protocol's PDF + Markdown there and quit. Never runs on the real data.
+        if CazzyDataLocation.testOverride != nil,
+           let outPath = ProcessInfo.processInfo.environment["CAZZY_RENDER_TEST_DIR"] {
+            let store = NoteStore()
+            let out = URL(fileURLWithPath: outPath, isDirectory: true)
+            for (index, protocolItem) in store.protocols.enumerated() {
+                let base = out.appendingPathComponent("protocol-\(index)")
+                try? ProtocolPDFRenderer.pdfData(for: protocolItem).write(to: base.appendingPathExtension("pdf"))
+                try? protocolItem.markdownBody.write(to: base.appendingPathExtension("md"), atomically: true, encoding: .utf8)
+                print("protocol-\(index): \(protocolItem.name) — used in \(store.usages(ofProtocol: protocolItem.id).count) entries")
+            }
+            print("recovery notice: \(store.dataRecoveryNotice ?? "none")")
+            exit(0)
+        }
         // Swift Package executables run directly (e.g. `swift run`, or the raw debug binary)
         // aren't launched via LaunchServices as a real .app bundle, so without this the
         // window renders but never becomes key and can't receive keystrokes. A properly
@@ -49,7 +64,15 @@ struct CazzyApp: App {
                 .frame(minWidth: 900, minHeight: 600)
                 .syncSystemAppearance(with: themeStore)
                 .preferredColorScheme(forcedColorScheme)
+                // Double-clicking a .cazzyprotocol file in Finder lands here (the file type is
+                // registered in Packaging/Info.plist). Reuse the open main window for it.
+                .onOpenURL { url in
+                    guard url.isFileURL, url.pathExtension.lowercased() == ProtocolPackage.fileExtension else { return }
+                    store.pendingImportProtocolURL = url
+                }
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
         }
+        .handlesExternalEvents(matching: ["*"])
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
         .defaultSize(width: 1100, height: 700)
@@ -97,6 +120,7 @@ struct CazzyApp: App {
                 .preferredColorScheme(forcedColorScheme)
         }
         .defaultSize(width: 360, height: 480)
+        .handlesExternalEvents(matching: [])
 
         WindowGroup(id: "calendar") {
             CalendarView()
@@ -108,6 +132,7 @@ struct CazzyApp: App {
                 .preferredColorScheme(forcedColorScheme)
         }
         .defaultSize(width: 1050, height: 720)
+        .handlesExternalEvents(matching: [])
 
         Settings {
             SettingsView()

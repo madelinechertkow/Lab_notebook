@@ -134,7 +134,14 @@ struct EditorView: View {
                     onInsertPlateMap: insertPlateMap,
                     onInsertGelMap: { imagePickerTarget = .gelMap },
                     onInsertImage: { imagePickerTarget = .inlineImage },
-                    onLinkFile: linkFile
+                    onLinkFile: linkFile,
+                    protocols: store.protocols,
+                    onReferenceProtocol: { protocolItem, version in
+                        let label = protocolItem.name.isEmpty ? "Untitled Protocol" : protocolItem.name
+                        let reference = ProtocolReference(protocolID: protocolItem.id, version: version)
+                        controller.insertText(reference.markdown(label: version.map { "\(label) v\($0)" } ?? label))
+                        persist()
+                    }
                 )
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
@@ -325,6 +332,14 @@ struct EditorView: View {
     /// Opens `cazzy-file:` links from Preview through their bookmark; every other link
     /// (web pages, mailto:, plain file:// paths typed by hand) gets the system's default handling.
     private func openNoteLink(_ url: URL) -> OpenURLAction.Result {
+        if let reference = ProtocolReference(url: url) {
+            if store.protocols.contains(where: { $0.id == reference.protocolID }) {
+                store.pendingOpenProtocolID = reference.protocolID
+            } else {
+                showLinkError("This protocol was deleted", "The entry still mentions it, but it's no longer in your Protocol Library.")
+            }
+            return .handled
+        }
         guard let id = LinkedFile.id(fromNoteLink: url) else { return .systemAction }
         guard let file = store.linkedFile(withID: id) else {
             showLinkError("This link's file was removed", "It was taken out of the notebook's Files tab. Link the file again from the note's toolbar.")
@@ -431,6 +446,8 @@ struct FormattingToolbar: View {
     var onInsertGelMap: () -> Void = {}
     var onInsertImage: () -> Void = {}
     var onLinkFile: () -> Void = {}
+    var protocols: [LabProtocol] = []
+    var onReferenceProtocol: (LabProtocol, Int?) -> Void = { _, _ in }
 
     @State private var showingSpecialCharacters = false
 
@@ -454,6 +471,7 @@ struct FormattingToolbar: View {
                 specialCharacterButton
                 toolButton("photo", "Insert image") { onInsertImage() }
                 toolButton("link", "Link file (highlight text first)") { onLinkFile() }
+                protocolMenu
                 if allowsPlateGelMaps {
                     Divider().frame(height: 14)
                     plateMapMenu
@@ -482,6 +500,41 @@ struct FormattingToolbar: View {
             }
             .environmentObject(theme)
         }
+    }
+
+    /// Inserts a link to a protocol (and the version used) at the cursor. The protocol then
+    /// lists this entry under "Used in notebook entries".
+    private var protocolMenu: some View {
+        Menu {
+            if protocols.isEmpty {
+                Text("No protocols yet")
+            }
+            ForEach(protocols.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }) { protocolItem in
+                let name = protocolItem.name.isEmpty ? "Untitled Protocol" : protocolItem.name
+                let versions = protocolItem.versions.map(\.versionNumber).sorted(by: >)
+                if versions.isEmpty {
+                    Button(name) { onReferenceProtocol(protocolItem, nil) }
+                } else {
+                    Menu(name) {
+                        ForEach(versions, id: \.self) { version in
+                            Button(version == protocolItem.currentVersionNumber ? "v\(version) (current)" : "v\(version)") {
+                                onReferenceProtocol(protocolItem, version)
+                            }
+                        }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "list.clipboard")
+                .font(.system(size: 12))
+                .frame(width: 26, height: 22)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .foregroundStyle(theme.textPrimary)
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(theme.cardBackground.opacity(0.5)))
+        .help("Reference a protocol (and version) used in this entry")
     }
 
     private var plateMapMenu: some View {

@@ -101,6 +101,20 @@ struct ContentView: View {
                 selectedNoteID = noteID
             }
         }
+        .onReceive(store.$pendingImportProtocolURL) { url in
+            // Opening a .cazzyprotocol file: switch to Protocols, where the list view imports it.
+            guard url != nil, sidebarSelection != .protocols else { return }
+            sidebarSelection = .protocols
+        }
+        .onReceive(store.$pendingOpenProtocolID) { protocolID in
+            // A protocol reference clicked in a notebook entry.
+            guard let protocolID, store.protocols.contains(where: { $0.id == protocolID }) else { return }
+            store.pendingOpenProtocolID = nil
+            sidebarSelection = .protocols
+            DispatchQueue.main.async {
+                selectedProtocolID = protocolID
+            }
+        }
         .alert(
             "Couldn't Load Your Notebook Data",
             isPresented: Binding(

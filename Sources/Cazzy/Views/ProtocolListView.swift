@@ -113,6 +113,12 @@ struct ProtocolListView: View {
             }
         }
         .background(theme.background)
+        .onReceive(store.$pendingImportProtocolURL) { url in
+            // A .cazzyprotocol file opened from Finder (see CazzyApp's onOpenURL).
+            guard let url else { return }
+            store.pendingImportProtocolURL = nil
+            importProtocol(at: url)
+        }
         .sheet(item: $mergeContext) { context in
             ProtocolMergeView(
                 local: context.local,
@@ -182,7 +188,13 @@ struct ProtocolListView: View {
         panel.canChooseFiles = true
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
-            do {
+            importProtocol(at: url)
+        }
+    }
+
+    /// Shared by the Import button and by double-clicking a .cazzyprotocol file in Finder.
+    private func importProtocol(at url: URL) {
+        do {
                 let result = try store.importProtocol(from: url)
                 switch result {
                 case .newProtocol(let imported):
@@ -209,7 +221,6 @@ struct ProtocolListView: View {
             } catch {
                 importErrorMessage = error.localizedDescription
             }
-        }
     }
 
     private func applyMerge(_ snapshot: ProtocolVersionSnapshot, protocolID: UUID) {

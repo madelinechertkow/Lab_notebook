@@ -82,6 +82,7 @@ struct ProtocolEditorView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     purposeSection
+                    usageSection
                     buffersSection
                     reagentsSection
                     stepsSection
@@ -134,6 +135,7 @@ struct ProtocolEditorView: View {
                 actionButton("printer", "Print") {
                     ProtocolPrinter.print(protocolItem)
                 }
+                exportMenu
             }
         }
         .padding(.horizontal, 24)
@@ -193,7 +195,7 @@ struct ProtocolEditorView: View {
                     }
                 }
 
-                actionButton("square.and.arrow.up", "Export…", action: exportProtocolFile)
+                exportMenu
             }
         }
         .padding(.horizontal, 24)
@@ -267,17 +269,19 @@ struct ProtocolEditorView: View {
                     .font(theme.bodyFont(10))
                     .foregroundStyle(theme.textTertiary)
                 Spacer()
-                addButton { addBuffer() }
-                    .help("Add a buffer recipe")
             }
             if buffers.isEmpty {
-                emptyRow("No buffers — click + if this protocol needs one made up beforehand.")
+                emptyRow("No buffers — add one below if this protocol needs one made up beforehand.")
             } else {
                 ForEach($buffers) { $buffer in
                     BufferRecipeCard(buffer: $buffer) {
                         buffers.removeAll { $0.id == buffer.id }
                     }
                 }
+            }
+            HStack(spacing: 6) {
+                bottomAddButton("Buffer") { addBuffer() }
+                    .help("Add a buffer recipe")
             }
         }
         .onChange(of: buffers) { _ in persist() }
@@ -287,6 +291,68 @@ struct ProtocolEditorView: View {
         buffers.append(BufferRecipe(components: [BufferComponent()]))
     }
 
+    // MARK: - Used in
+
+    /// Notebook entries that reference this protocol (via the entry toolbar's protocol button).
+    private var usageSection: some View {
+        let usages = store.usages(ofProtocol: protocolID)
+        let notebookNames = Dictionary(store.notebooks.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        let current = currentProtocol?.currentVersionNumber ?? 0
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                sectionHeader("Used in Notebook Entries", systemImage: "book.pages")
+                if !usages.isEmpty {
+                    Text("\(usages.count)")
+                        .font(theme.bodyFont(10, weight: .semibold))
+                        .foregroundStyle(theme.textTertiary)
+                }
+            }
+            if usages.isEmpty {
+                emptyRow("Not referenced yet — in a notebook entry, click the clipboard button in the toolbar to reference this protocol.")
+            } else {
+                ForEach(usages) { usage in
+                    Button {
+                        store.pendingOpenNoteID = usage.note.id
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "doc.text")
+                                .font(.system(size: 11))
+                                .foregroundStyle(theme.accentDeep)
+                            Text(usage.note.title.isEmpty ? "Untitled" : usage.note.title)
+                                .font(theme.bodyFont(12, weight: .medium))
+                                .foregroundStyle(theme.textPrimary)
+                                .lineLimit(1)
+                            if let notebookName = notebookNames[usage.note.notebookID] {
+                                Text(notebookName)
+                                    .font(theme.bodyFont(11))
+                                    .foregroundStyle(theme.textTertiary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            ForEach(usage.versions.compactMap { $0 }, id: \.self) { version in
+                                Text(version == current ? "v\(version)" : "v\(version) · older")
+                                    .font(theme.bodyFont(10, weight: .semibold))
+                                    .foregroundStyle(version == current ? theme.accentDeep : .orange)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Capsule().fill((version == current ? theme.accentDeep : Color.orange).opacity(0.12)))
+                            }
+                            Text(usage.note.createdAt.formatted(date: .abbreviated, time: .omitted))
+                                .font(theme.bodyFont(11))
+                                .foregroundStyle(theme.textTertiary)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .softCard(cornerRadius: 8)
+                    .help("Open this entry")
+                }
+            }
+        }
+    }
+
     // MARK: - Reagents
 
     private var reagentsSection: some View {
@@ -294,23 +360,6 @@ struct ProtocolEditorView: View {
             HStack {
                 sectionHeader("Materials & Reagents", systemImage: "cross.vial")
                 Spacer()
-                Menu {
-                    ForEach(MaterialCategory.allCases.filter { $0 != .uncategorized }) { category in
-                        Button {
-                            addReagent(category: category)
-                        } label: {
-                            Label(category.title, systemImage: category.systemImage)
-                        }
-                    }
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 14))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.accentDeep)
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .help("Add a material — pick what kind it is")
             }
             if reagents.isEmpty {
                 emptyRow("No materials yet")
@@ -336,6 +385,21 @@ struct ProtocolEditorView: View {
                     }
                 }
             }
+            Menu {
+                ForEach(MaterialCategory.allCases.filter { $0 != .uncategorized }) { category in
+                    Button {
+                        addReagent(category: category)
+                    } label: {
+                        Label(category.title, systemImage: category.systemImage)
+                    }
+                }
+            } label: {
+                bottomAddLabel("Material")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Add a material — pick what kind it is")
         }
         .onChange(of: reagents) { _ in
             // Same as steps: no disk writes for every row a drag passes over; the drop (or
@@ -405,20 +469,6 @@ struct ProtocolEditorView: View {
             HStack {
                 sectionHeader("Steps", systemImage: "list.number")
                 Spacer()
-                Menu {
-                    Button("Add Section") { addStep(kind: .section) }
-                    Button("Add Step") { addStep(kind: .step) }
-                    Button("Add Note") { addStep(kind: .note) }
-                    Button("Add Warning") { addStep(kind: .warning) }
-                    Button("Add Pause Point") { addStep(kind: .pause) }
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 14))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.accentDeep)
-                .menuStyle(.borderlessButton)
-                .fixedSize()
             }
             if steps.isEmpty {
                 emptyRow("No steps yet")
@@ -435,6 +485,17 @@ struct ProtocolEditorView: View {
                     )
                     .onDrop(of: [.text], delegate: StepDropDelegate(targetID: step.id, steps: $steps, draggedStepID: $draggedStepID, onFinished: persist))
                 }
+            }
+            // At the bottom, right where the next step goes, so adding several in a row
+            // doesn't mean scrolling back up to the top of the list each time.
+            HStack(spacing: 6) {
+                bottomAddButton("Step") { addStep(kind: .step) }
+                    .keyboardShortcut(.return, modifiers: [.command, .shift])
+                    .help("Add a step (⇧⌘↩)")
+                bottomAddButton("Section") { addStep(kind: .section) }
+                bottomAddButton("Note") { addStep(kind: .note) }
+                bottomAddButton("Warning") { addStep(kind: .warning) }
+                bottomAddButton("Pause Point") { addStep(kind: .pause) }
             }
             totalTimeRow
         }
@@ -583,6 +644,27 @@ struct ProtocolEditorView: View {
         }
     }
 
+    private func bottomAddLabel(_ title: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "plus.circle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(theme.accentDeep)
+            Text(title)
+                .font(theme.bodyFont(11, weight: .medium))
+                .foregroundStyle(theme.textPrimary)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(theme.cardBackground.opacity(0.5)))
+    }
+
+    private func bottomAddButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            bottomAddLabel(title)
+        }
+        .buttonStyle(.plain)
+    }
+
     private func addButton(action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: "plus.circle.fill")
@@ -626,15 +708,64 @@ struct ProtocolEditorView: View {
 
     // MARK: - Export
 
-    private func exportProtocolFile() {
+    private enum ExportFormat {
+        case pdf, markdown, cazzy
+
+        var contentType: UTType {
+            switch self {
+            case .pdf: return .pdf
+            case .markdown: return UTType(filenameExtension: "md") ?? .plainText
+            case .cazzy: return UTType(filenameExtension: ProtocolPackage.fileExtension) ?? .json
+            }
+        }
+    }
+
+    private var exportMenu: some View {
+        Menu {
+            Button("PDF…") { exportProtocolFile(as: .pdf) }
+                .help("Looks like View mode — for printing, emailing, or reading anywhere")
+            Button("Markdown…") { exportProtocolFile(as: .markdown) }
+                .help("Plain text with formatting marks — opens in any text editor")
+            Divider()
+            Button("Cazzy Protocol File…") { exportProtocolFile(as: .cazzy) }
+                .help("For sharing with another Cazzy user — double-click it to open in Cazzy")
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 11))
+                Text("Export")
+                    .font(theme.bodyFont(11, weight: .medium))
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.visible)
+        .fixedSize()
+        .foregroundStyle(theme.textPrimary)
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(theme.cardBackground.opacity(0.5)))
+    }
+
+    private func exportProtocolFile(as format: ExportFormat) {
         guard let currentProtocol else { return }
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: ProtocolPackage.fileExtension) ?? .json]
-        panel.nameFieldStringValue = (currentProtocol.name.isEmpty ? "Untitled Protocol" : currentProtocol.name)
+        panel.allowedContentTypes = [format.contentType]
+        var fileName = currentProtocol.name.isEmpty ? "Untitled Protocol" : currentProtocol.name
+        if currentProtocol.currentVersionNumber > 0 && format != .cazzy {
+            fileName += " v\(currentProtocol.currentVersionNumber)"
+        }
+        panel.nameFieldStringValue = fileName.replacingOccurrences(of: "/", with: "-")
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             do {
-                try store.exportProtocol(currentProtocol, to: url)
+                switch format {
+                case .cazzy:
+                    try store.exportProtocol(currentProtocol, to: url)
+                case .markdown:
+                    try currentProtocol.markdownBody.write(to: url, atomically: true, encoding: .utf8)
+                case .pdf:
+                    try ProtocolPDFRenderer.pdfData(for: currentProtocol).write(to: url, options: .atomic)
+                }
             } catch {
                 exportErrorMessage = error.localizedDescription
             }

@@ -26,5 +26,45 @@
     <string>Cazzy checks when you're busy so you can plan experiments in free time slots, and can optionally add scheduled experiments to your calendar.</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Cazzy checks when you're busy so you can plan experiments in free time slots, and can optionally add scheduled experiments to your calendar.</string>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Cazzy Protocol</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
+            <key>CFBundleTypeIconFile</key>
+            <string>Cazzy</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.madelinechertkow.cazzy.protocol</string>
+            </array>
+        </dict>
+    </array>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.madelinechertkow.cazzy.protocol</string>
+            <key>UTTypeDescription</key>
+            <string>Cazzy Protocol</string>
+            <key>UTTypeIconFile</key>
+            <string>Cazzy</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+                <string>public.content</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>cazzyprotocol</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
 </dict>
 </plist>

@@ -60,9 +60,12 @@ final class BoxBackupService: ObservableObject {
     }
 
     init() {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        manifestURL = appSupport.appendingPathComponent("Cazzy", isDirectory: true)
-            .appendingPathComponent("box-backup-manifest.json")
+        manifestURL = CazzyDataLocation.directory.appendingPathComponent("box-backup-manifest.json")
+        // A test launch on a copy of the data must never write into the real Box folder.
+        guard CazzyDataLocation.testOverride == nil else {
+            isEnabled = false
+            return
+        }
         isEnabled = UserDefaults.standard.bool(forKey: Self.enabledKey)
         if let path = UserDefaults.standard.string(forKey: Self.folderKey) {
             folderURL = URL(fileURLWithPath: path, isDirectory: true)

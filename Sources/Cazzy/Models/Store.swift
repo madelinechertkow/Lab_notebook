@@ -22,6 +22,10 @@ final class NoteStore: ObservableObject {
     @Published var pendingOpenNoteID: UUID?
     /// Set by the protocol editor to ask the calendar window to open a prefilled "new experiment" sheet.
     @Published var pendingScheduleProtocolID: UUID?
+    /// Set when a note's protocol reference is clicked, to switch to that protocol.
+    @Published var pendingOpenProtocolID: UUID?
+    /// Set when a .cazzyprotocol file is opened from Finder; the protocol list imports it.
+    @Published var pendingImportProtocolURL: URL?
 
     /// Bumped whenever undo/redo replaces the published state wholesale. Editor views that
     /// hold local @State copies (note editor, protocol editor) watch this to reload.
@@ -49,8 +53,7 @@ final class NoteStore: ObservableObject {
     private static let undoStackLimit = 100
 
     init() {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = appSupport.appendingPathComponent("Cazzy", isDirectory: true)
+        let dir = CazzyDataLocation.directory
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         self.fileURL = dir.appendingPathComponent("data.json")
         if let raw = UserDefaults.standard.string(forKey: "labModeFilter"), let mode = LabModeFilter(rawValue: raw) {
@@ -595,5 +598,21 @@ final class NoteStore: ObservableObject {
             ),
         ]
         save()
+    }
+}
+
+/// Where data.json lives. Normally ~/Library/Application Support/Cazzy; the CAZZY_DATA_DIR
+/// environment variable points a test launch at a copy instead, so trying out a new build
+/// can never touch the real notebook (Box backup is also switched off for such a launch).
+enum CazzyDataLocation {
+    static let testOverride: URL? = {
+        guard let path = ProcessInfo.processInfo.environment["CAZZY_DATA_DIR"], !path.isEmpty else { return nil }
+        return URL(fileURLWithPath: path, isDirectory: true)
+    }()
+
+    static var directory: URL {
+        if let testOverride { return testOverride }
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return appSupport.appendingPathComponent("Cazzy", isDirectory: true)
     }
 }
