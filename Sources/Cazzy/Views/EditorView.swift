@@ -7,6 +7,11 @@ struct EditorView: View {
     @EnvironmentObject var theme: ThemeStore
     @EnvironmentObject var shortcuts: ShortcutStore
     let noteID: UUID
+    /// The pop-out entry window opens in Preview (reading) mode; the main window opens in Edit.
+    var startsInPreview: Bool = false
+    /// When opened from a protocol's "Used in" list: the reference link clicked there is
+    /// highlighted in Preview, which scrolls to it.
+    var highlightLink: String? = nil
 
     @State private var title: String = ""
     @State private var content: String = ""
@@ -20,6 +25,10 @@ struct EditorView: View {
     @State private var plateMapResults: [String: PlateMapInstance] = [:]
     @State private var gelMapResults: [String: GelMapInstance] = [:]
     @StateObject private var controller = EditorController()
+    @StateObject private var previewTracker = PreviewScrollTracker()
+    /// Where View mode starts: the bottom of the entry when it's opened, or the spot you were
+    /// at in Edit mode when switching back.
+    @State private var previewInitialScroll: MarkdownPreview.InitialScroll = .bottom
 
     /// Which "pick an image" action is pending. A single `.fileImporter` driven by this
     /// (rather than two separate `showingXPicker` booleans, each with its own `.fileImporter`)
@@ -107,13 +116,12 @@ struct EditorView: View {
                     .padding(.top, 8)
                 }
 
-                Button {
-                    isPreview.toggle()
-                } label: {
+                Button(action: toggleViewAndEdit) {
                     Image(systemName: isPreview ? "pencil" : "eye")
                         .font(.system(size: 14))
                 }
                 .buttonStyle(.plain)
+                .help(isPreview ? "Edit this entry — opens at the spot you're looking at" : "View this entry")
                 .foregroundStyle(theme.accentDeep)
                 .padding(.top, 6)
             }
@@ -138,7 +146,8 @@ struct EditorView: View {
                     protocols: store.protocols,
                     onReferenceProtocol: { protocolItem, version in
                         let label = protocolItem.name.isEmpty ? "Untitled Protocol" : protocolItem.name
-                        let reference = ProtocolReference(protocolID: protocolItem.id, version: version)
+                        guard let name = askReferenceName(protocolName: version.map { "\(label) v\($0)" } ?? label) else { return }
+                        let reference = ProtocolReference(protocolID: protocolItem.id, version: version, name: name)
                         controller.insertText(reference.markdown(label: version.map { "\(label) v\($0)" } ?? label))
                         persist()
                     }
@@ -172,7 +181,10 @@ struct EditorView: View {
                     onGelMapChange: { id, instance in
                         gelMapResults[id] = instance
                         persist()
-                    }
+                    },
+                    highlightLink: highlightLink,
+                    initialScroll: previewInitialScroll,
+                    scrollTracker: previewTracker
                 )
                 .environment(\.openURL, OpenURLAction(handler: openNoteLink))
             } else {
@@ -203,8 +215,22 @@ struct EditorView: View {
             .padding(.vertical, 8)
         }
         .background(theme.editorBackground)
-        .onAppear(perform: loadFromNote)
+        .onAppear {
+            loadFromNote()
+            // Entries open in View mode, scrolled to the bottom (the latest writing). A brand-new
+            // empty entry opens straight in Edit mode, since there's nothing to view yet.
+            let isEmpty = content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            isPreview = startsInPreview || !isEmpty
+            previewInitialScroll = .bottom
+        }
         .onChange(of: store.undoTick) { _ in loadFromNote() }
+        // The same entry can be open in two windows (main window + a pop-out from a protocol's
+        // "Used in" list). When the other window saves a change, pick it up here — otherwise
+        // this window's older copy would be written back over it on the next keystroke.
+        .onChange(of: currentNote) { stored in
+            guard let stored, !matchesLocalState(stored) else { return }
+            loadFromNote()
+        }
         .fileImporter(
             // The `set` half is intentionally a no-op: clearing imagePickerTarget only ever
             // happens below, inside onCompletion. If this `set` also cleared it on dismissal,
@@ -243,8 +269,36 @@ struct EditorView: View {
         gelMapResults = currentNote.gelMapResults
     }
 
+    /// Switches between View and Edit, keeping the same part of the entry on screen.
+    private func toggleViewAndEdit() {
+        if isPreview {
+            let offset = previewTracker.topVisibleOffset
+            isPreview = false
+            // The text view is created by this switch; scroll it once it exists and is laid out.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                controller.scroll(toCharacter: offset)
+            }
+        } else {
+            previewInitialScroll = .sourceOffset(controller.firstVisibleCharacterIndex() ?? 0)
+            isPreview = true
+        }
+    }
+
+    private func matchesLocalState(_ note: Note) -> Bool {
+        note.title == title
+            && note.content == content
+            && note.tags == tags
+            && note.executionLanguage == executionLanguage
+            && note.codeEnvironmentID == codeEnvironmentID
+            && note.codeBlockResults == codeBlockResults
+            && note.plateMapResults == plateMapResults
+            && note.gelMapResults == gelMapResults
+    }
+
     private func persist() {
         guard var updated = currentNote else { return }
+        // Nothing actually changed (e.g. just loading the entry) — don't re-save it.
+        guard !matchesLocalState(updated) else { return }
         updated.title = title
         updated.content = content
         updated.tags = tags
@@ -349,6 +403,22 @@ struct EditorView: View {
             showLinkError("Couldn't find \"\(file.fileName)\"", "It may have been moved or deleted. Use Relink… on it in the notebook's Files tab.")
         }
         return .handled
+    }
+
+    /// Asks what to call this use of the protocol; it shows as the subtitle in the protocol's
+    /// "Used in Notebook Entries" list. Returns nil on Cancel, "" when left blank.
+    private func askReferenceName(protocolName: String) -> String? {
+        let alert = NSAlert()
+        alert.messageText = "Reference \(protocolName)"
+        alert.informativeText = "Give this use of the protocol a name (optional). It appears under this entry in the protocol's \"Used in Notebook Entries\" list."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        field.placeholderString = "e.g. KO vs WT lysates — blot 2"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Insert")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        return field.stringValue
     }
 
     private func showLinkError(_ message: String, _ info: String) {

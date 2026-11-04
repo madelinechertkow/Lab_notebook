@@ -40,6 +40,30 @@ final class EditorController: ObservableObject {
 
     /// Inserts text at the cursor (replacing any selection) with the cursor left right after
     /// it — used by the special-character picker, which has no wrapping semantics.
+    /// UTF-16 offset of the first character visible at the top of the editor.
+    func firstVisibleCharacterIndex() -> Int? {
+        guard let textView, let layoutManager = textView.layoutManager, let container = textView.textContainer else { return nil }
+        var visible = textView.visibleRect
+        visible.origin.y -= textView.textContainerOrigin.y
+        let glyphRange = layoutManager.glyphRange(forBoundingRect: visible, in: container)
+        guard glyphRange.location != NSNotFound else { return nil }
+        return layoutManager.characterIndexForGlyph(at: glyphRange.location)
+    }
+
+    /// Scrolls so the line containing `offset` is at the top, and puts the cursor there.
+    func scroll(toCharacter offset: Int) {
+        guard let textView, let layoutManager = textView.layoutManager, let container = textView.textContainer else { return }
+        let length = (textView.string as NSString).length
+        let location = max(0, min(offset, length))
+        layoutManager.ensureLayout(for: container)
+        let glyph = layoutManager.glyphIndexForCharacter(at: max(0, min(location, max(0, length - 1))))
+        let lineRect = length == 0 ? .zero : layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        let y = location == 0 ? 0 : max(0, lineRect.minY + textView.textContainerOrigin.y - 4)
+        textView.scroll(NSPoint(x: 0, y: y))
+        textView.setSelectedRange(NSRange(location: location, length: 0))
+        textView.window?.makeFirstResponder(textView)
+    }
+
     func insertText(_ text: String) {
         guard let textView else { return }
         let range = textView.selectedRange()

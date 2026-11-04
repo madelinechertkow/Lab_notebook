@@ -13,14 +13,53 @@ struct MarkdownPreview: View {
     var onPlateMapChange: (String, PlateMapInstance) -> Void = { _, _ in }
     var gelMapResults: [String: GelMapInstance] = [:]
     var onGelMapChange: (String, GelMapInstance) -> Void = { _, _ in }
+    /// Links to exactly this URL — or to it plus a `?query` (so `cazzy-protocol:<id>` matches
+    /// every version of that protocol) — are highlighted, and the preview scrolls to the first.
+    var highlightLink: String? = nil
+
+    static let highlightScrollID = "highlighted-link"
+    static let bottomScrollID = "preview-bottom"
+
+    enum InitialScroll: Equatable {
+        case top
+        case bottom
+        /// Show the block containing this UTF-16 offset of the raw markdown at the top —
+        /// used to land on the same spot when switching from Edit to View.
+        case sourceOffset(Int)
+    }
+
+    /// Where to start when the preview appears. A `.sourceOffset` wins over the highlighted
+    /// link; otherwise the highlighted link wins over `.top`/`.bottom`.
+    var initialScroll: InitialScroll = .top
+    /// Receives where every block currently sits, so the editor can tell which part of the
+    /// entry is on screen when switching to Edit.
+    var scrollTracker: PreviewScrollTracker? = nil
 
     var body: some View {
+        let segments = ExecBlockParser.parse(markdown)
+        let anchors = PreviewAnchors.compute(markdown: markdown, segments: segments)
+        // Only the first text segment containing the link carries the scroll target.
+        let anchorSegmentID: String? = highlightLink.flatMap { link in
+            segments.first { segment in
+                if case .text(let content) = segment {
+                    return content.contains("(\(link))") || content.contains("(\(link)?")
+                }
+                return false
+            }?.id
+        }
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                ForEach(ExecBlockParser.parse(markdown)) { segment in
+                ForEach(Array(segments.enumerated()), id: \.offset) { segmentIndex, segment in
+                    Group {
                     switch segment {
                     case .text(let content):
-                        MarkdownBlocksView(content: content)
+                        MarkdownBlocksView(
+                            content: content,
+                            segmentIndex: segmentIndex,
+                            highlightLink: highlightLink,
+                            carriesScrollTarget: segment.id == anchorSegmentID
+                        )
                     case .exec(let id, let code):
                         ExecBlockView(
                             blockID: id,
@@ -48,12 +87,171 @@ struct MarkdownPreview: View {
                             EmptyView()
                         }
                     }
+                    }
+                    // Non-text blocks (code, plate map, gel map) are one scroll anchor each;
+                    // text segments mark each of their paragraphs individually.
+                    .modifier(PreviewAnchorModifier(
+                        anchorID: segment.isText ? nil : PreviewAnchors.segmentID(segmentIndex)
+                    ))
                 }
+                Color.clear
+                    .frame(height: 1)
+                    .id(Self.bottomScrollID)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(20)
         }
+        .coordinateSpace(name: PreviewAnchors.coordinateSpace)
         .scrollContentBackground(.hidden)
+        .onPreferenceChange(PreviewAnchorTopsKey.self) { tops in
+            scrollTracker?.update(tops: tops, anchors: anchors)
+        }
+        .onAppear {
+            // Give the blocks a moment to lay out before scrolling.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                switch initialScroll {
+                case .sourceOffset(let offset):
+                    if let id = anchors.last(where: { $0.offset <= offset })?.id ?? anchors.first?.id {
+                        proxy.scrollTo(id, anchor: .top)
+                    }
+                case .top, .bottom:
+                    if anchorSegmentID != nil {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            proxy.scrollTo(Self.highlightScrollID, anchor: .center)
+                        }
+                    } else if initialScroll == .bottom {
+                        proxy.scrollTo(Self.bottomScrollID, anchor: .bottom)
+                    }
+                }
+            }
+        }
+        }
+    }
+}
+
+// MARK: - Keeping your place between View and Edit
+//
+// The preview is rendered blocks, the editor is raw Markdown, so "the same spot" means the same
+// paragraph. Each preview block gets a scroll anchor and the character offset where it starts
+// in the raw text (found by searching for a run of its words, moving forward through the text).
+// The tracker remembers which anchor is at the top of the preview, so switching to Edit can
+// scroll the text view to that offset — and switching back scrolls the preview to the block
+// containing the text view's first visible character.
+
+extension ContentSegment {
+    var isText: Bool {
+        if case .text = self { return true }
+        return false
+    }
+}
+
+enum PreviewAnchors {
+    static let coordinateSpace = "markdown-preview-scroll"
+
+    static func segmentID(_ segmentIndex: Int) -> String { "seg\(segmentIndex)" }
+    static func blockID(_ segmentIndex: Int, _ blockID: Int) -> String { "seg\(segmentIndex)-b\(blockID)" }
+
+    /// Every scroll anchor in display order with the UTF-16 offset in `markdown` it starts at.
+    static func compute(markdown: String, segments: [ContentSegment]) -> [(id: String, offset: Int)] {
+        let source = markdown as NSString
+        var anchors: [(id: String, offset: Int)] = []
+        var cursor = 0
+
+        func find(_ needle: String, from start: Int) -> Int? {
+            guard !needle.isEmpty, start <= source.length else { return nil }
+            let range = source.range(of: needle, options: [], range: NSRange(location: start, length: source.length - start))
+            return range.location == NSNotFound ? nil : range.location
+        }
+
+        for (segmentIndex, segment) in segments.enumerated() {
+            switch segment {
+            case .text(let content):
+                let segmentStart = find(content, from: cursor) ?? cursor
+                var blockCursor = segmentStart
+                for block in markdownBlocks(from: content) {
+                    let key = searchKey(String(block.text.characters))
+                    let offset = key.flatMap { find($0, from: blockCursor) } ?? blockCursor
+                    anchors.append((blockID(segmentIndex, block.id), offset))
+                    blockCursor = offset + (key.map { ($0 as NSString).length } ?? 0)
+                }
+                cursor = max(blockCursor, segmentStart + (content as NSString).length)
+            case .exec(let id, _), .plateMap(let id), .gelMap(let id):
+                let offset = find(id, from: cursor).map { max(0, $0 - 12) } ?? cursor
+                anchors.append((segmentID(segmentIndex), offset))
+                cursor = max(cursor, offset)
+            }
+        }
+        return anchors
+    }
+
+    /// The first run of 4+ letters/digits/spaces in a block's displayed text, capped at 24
+    /// characters — a piece likely to appear verbatim in the raw Markdown (formatting marks,
+    /// link targets and symbol substitutions are all outside such a run).
+    private static func searchKey(_ text: String) -> String? {
+        var best = ""
+        var current = ""
+        for character in text {
+            if character.isLetter || character.isNumber || character == " " {
+                current.append(character)
+                if current.count >= 24 { break }
+            } else {
+                if current.trimmingCharacters(in: .whitespaces).count >= 4 { break }
+                current = ""
+            }
+        }
+        best = current.trimmingCharacters(in: .whitespaces)
+        return best.count >= 3 ? best : nil
+    }
+}
+
+/// Holds where each preview block sits right now. A reference type on purpose: it changes on
+/// every scroll, and nothing needs to re-render when it does.
+final class PreviewScrollTracker: ObservableObject {
+    private var tops: [String: CGFloat] = [:]
+    private var anchors: [(id: String, offset: Int)] = []
+
+    func update(tops: [String: CGFloat], anchors: [(id: String, offset: Int)]) {
+        self.tops = tops
+        self.anchors = anchors
+    }
+
+    /// Raw-text offset of the block at the top of the visible preview (0 when at the top).
+    var topVisibleOffset: Int {
+        var best: (top: CGFloat, offset: Int)?
+        for anchor in anchors {
+            guard let top = tops[anchor.id], top <= 30 else { continue }
+            if best == nil || top > best!.top { best = (top, anchor.offset) }
+        }
+        return best?.offset ?? 0
+    }
+}
+
+struct PreviewAnchorTopsKey: PreferenceKey {
+    static var defaultValue: [String: CGFloat] = [:]
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
+/// Marks a view as a scroll anchor: gives it an id and reports where its top currently is.
+struct PreviewAnchorModifier: ViewModifier {
+    let anchorID: String?
+
+    func body(content: Content) -> some View {
+        if let anchorID {
+            content
+                .background(
+                    GeometryReader { geometry in
+                        Color.clear.preference(
+                            key: PreviewAnchorTopsKey.self,
+                            value: [anchorID: geometry.frame(in: .named(PreviewAnchors.coordinateSpace)).minY]
+                        )
+                    }
+                )
+                .id(anchorID)
+        } else {
+            content
+        }
     }
 }
 
@@ -378,14 +576,47 @@ private func markdownHeaderSize(_ level: Int) -> CGFloat {
 private struct MarkdownBlocksView: View {
     @EnvironmentObject var theme: ThemeStore
     let content: String
+    var segmentIndex: Int = 0
+    var highlightLink: String? = nil
+    var carriesScrollTarget: Bool = false
 
     var body: some View {
+        let blocks = markdownBlocks(from: content)
+        let firstMatch = carriesScrollTarget ? blocks.first(where: containsHighlightedLink)?.id : nil
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(markdownBlocks(from: content)) { block in
-                render(block)
+            ForEach(blocks) { block in
+                Group {
+                if containsHighlightedLink(block) {
+                    render(block)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(theme.accent.opacity(0.18))
+                        )
+                        .overlay(alignment: .leading) {
+                            Rectangle()
+                                .fill(theme.accentDeep)
+                                .frame(width: 3)
+                        }
+                        .padding(.horizontal, -8)
+                        .id(block.id == firstMatch ? MarkdownPreview.highlightScrollID : "block-\(block.id)")
+                } else {
+                    render(block)
+                }
+                }
+                .modifier(PreviewAnchorModifier(anchorID: PreviewAnchors.blockID(segmentIndex, block.id)))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func containsHighlightedLink(_ block: MarkdownBlock) -> Bool {
+        guard let highlightLink else { return false }
+        return block.text.runs.contains { run in
+            guard let url = run.link?.absoluteString else { return false }
+            return url == highlightLink || url.hasPrefix(highlightLink + "?")
+        }
     }
 
     @ViewBuilder

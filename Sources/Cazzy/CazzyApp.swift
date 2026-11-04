@@ -15,6 +15,16 @@ final class CazzyAppDelegate: NSObject, NSApplicationDelegate {
                 try? protocolItem.markdownBody.write(to: base.appendingPathExtension("md"), atomically: true, encoding: .utf8)
                 print("protocol-\(index): \(protocolItem.name) — used in \(store.usages(ofProtocol: protocolItem.id).count) entries")
             }
+            // Where each View-mode paragraph maps to in the raw text (for keeping your place).
+            for note in store.notes {
+                let source = note.content as NSString
+                let anchors = PreviewAnchors.compute(markdown: note.content, segments: ExecBlockParser.parse(note.content))
+                print("== \(note.title): \(anchors.count) anchors")
+                for anchor in anchors {
+                    let snippet = source.substring(with: NSRange(location: anchor.offset, length: min(40, source.length - anchor.offset)))
+                    print("  \(anchor.id) @\(anchor.offset): \(snippet.replacingOccurrences(of: "\n", with: "⏎"))")
+                }
+            }
             print("recovery notice: \(store.dataRecoveryNotice ?? "none")")
             exit(0)
         }
@@ -134,6 +144,20 @@ struct CazzyApp: App {
         .defaultSize(width: 1050, height: 720)
         .handlesExternalEvents(matching: [])
 
+        // A notebook entry in its own window — opened from a protocol's "Used in Notebook
+        // Entries" list so the protocol stays on screen beside it.
+        WindowGroup("Notebook Entry", id: "note", for: NoteWindowTarget.self) { $target in
+            NoteWindowContent(target: target)
+                .environmentObject(store)
+                .environmentObject(themeStore)
+                .environmentObject(shortcutStore)
+                .frame(minWidth: 520, minHeight: 420)
+                .syncSystemAppearance(with: themeStore)
+                .preferredColorScheme(forcedColorScheme)
+        }
+        .defaultSize(width: 760, height: 720)
+        .handlesExternalEvents(matching: [])
+
         Settings {
             SettingsView()
                 .environmentObject(store)
@@ -149,4 +173,37 @@ struct CazzyApp: App {
     private var forcedColorScheme: ColorScheme? {
         themeStore.mode == .auto ? nil : (themeStore.theme.isDark ? .dark : .light)
     }
+}
+
+/// Body of the pop-out entry window: the normal entry editor, opened in Preview mode.
+private struct NoteWindowContent: View {
+    @EnvironmentObject var store: NoteStore
+    @EnvironmentObject var theme: ThemeStore
+    let target: NoteWindowTarget?
+
+    var body: some View {
+        if let target, let note = store.notes.first(where: { $0.id == target.noteID }) {
+            EditorView(
+                noteID: target.noteID,
+                startsInPreview: true,
+                highlightLink: target.link ?? target.protocolID.map { "\(ProtocolReference.scheme):\($0.uuidString)" }
+            )
+                .id(target)
+                .navigationTitle(note.title.isEmpty ? "Untitled" : note.title)
+        } else {
+            Text("This notebook entry was deleted.")
+                .font(theme.bodyFont(14))
+                .foregroundStyle(theme.textTertiary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(theme.editorBackground)
+        }
+    }
+}
+
+/// Which entry a pop-out window shows, and which protocol's reference to jump to in it.
+struct NoteWindowTarget: Codable, Hashable {
+    var noteID: UUID
+    var protocolID: UUID?
+    /// The exact reference link to jump to (when one entry references the protocol in several places).
+    var link: String? = nil
 }

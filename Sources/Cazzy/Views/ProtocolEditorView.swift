@@ -312,34 +312,45 @@ struct ProtocolEditorView: View {
             } else {
                 ForEach(usages) { usage in
                     Button {
-                        store.pendingOpenNoteID = usage.note.id
+                        openWindow(id: "note", value: NoteWindowTarget(noteID: usage.note.id, protocolID: protocolID, link: usage.link))
                     } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "doc.text")
-                                .font(.system(size: 11))
-                                .foregroundStyle(theme.accentDeep)
-                            Text(usage.note.title.isEmpty ? "Untitled" : usage.note.title)
-                                .font(theme.bodyFont(12, weight: .medium))
-                                .foregroundStyle(theme.textPrimary)
-                                .lineLimit(1)
-                            if let notebookName = notebookNames[usage.note.notebookID] {
-                                Text(notebookName)
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "doc.text")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(theme.accentDeep)
+                                Text(usage.note.title.isEmpty ? "Untitled" : usage.note.title)
+                                    .font(theme.bodyFont(12, weight: .medium))
+                                    .foregroundStyle(theme.textPrimary)
+                                    .lineLimit(1)
+                                if let notebookName = notebookNames[usage.note.notebookID] {
+                                    Text(notebookName)
+                                        .font(theme.bodyFont(11))
+                                        .foregroundStyle(theme.textTertiary)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                                if let version = usage.reference.version {
+                                    Text(version == current ? "v\(version)" : "v\(version) · older")
+                                        .font(theme.bodyFont(10, weight: .semibold))
+                                        .foregroundStyle(version == current ? theme.accentDeep : .orange)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Capsule().fill((version == current ? theme.accentDeep : Color.orange).opacity(0.12)))
+                                }
+                                Text(usage.note.createdAt.formatted(date: .abbreviated, time: .omitted))
                                     .font(theme.bodyFont(11))
                                     .foregroundStyle(theme.textTertiary)
-                                    .lineLimit(1)
                             }
-                            Spacer()
-                            ForEach(usage.versions.compactMap { $0 }, id: \.self) { version in
-                                Text(version == current ? "v\(version)" : "v\(version) · older")
-                                    .font(theme.bodyFont(10, weight: .semibold))
-                                    .foregroundStyle(version == current ? theme.accentDeep : .orange)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Capsule().fill((version == current ? theme.accentDeep : Color.orange).opacity(0.12)))
+                            // The name given when the reference was inserted, as a subtitle.
+                            if let name = usage.reference.name {
+                                Text(name)
+                                    .font(theme.bodyFont(11))
+                                    .italic()
+                                    .foregroundStyle(theme.textSecondary)
+                                    .lineLimit(2)
+                                    .padding(.leading, 19)
                             }
-                            Text(usage.note.createdAt.formatted(date: .abbreviated, time: .omitted))
-                                .font(theme.bodyFont(11))
-                                .foregroundStyle(theme.textTertiary)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
@@ -347,7 +358,7 @@ struct ProtocolEditorView: View {
                     }
                     .buttonStyle(.plain)
                     .softCard(cornerRadius: 8)
-                    .help("Open this entry")
+                    .help("Open this entry in its own window, at the spot where it references this protocol")
                 }
             }
         }
@@ -1051,38 +1062,39 @@ private struct StepRow: View {
                 .lineLimit(1...4)
 
                 if step.kind == .step {
-                    HStack(spacing: 12) {
+                    // Each number box is wide enough for its longest sensible value ("90" min,
+                    // "-80" °C) and the groups are fixedSize, so neither the numbers nor their
+                    // units can be squeezed on top of each other. Notes get their own line below.
+                    HStack(spacing: 14) {
                         HStack(spacing: 4) {
                             Image(systemName: "clock")
                                 .font(.system(size: 10))
-                            HStack(spacing: 0) {
-                                TextField("0", text: hoursText)
-                                    .textFieldStyle(.plain)
-                                    .frame(width: 14)
-                                Text("hr")
-                                    .foregroundStyle(theme.textTertiary)
-                            }
-                            HStack(spacing: 0) {
-                                TextField("0", text: minutesText)
-                                    .textFieldStyle(.plain)
-                                    .frame(width: 14)
-                                Text("min")
-                                    .foregroundStyle(theme.textTertiary)
-                            }
+                            TextField("0", text: hoursText)
+                                .textFieldStyle(.plain)
+                                .multilineTextAlignment(.trailing)
+                                .frame(width: 22)
+                            Text("hr")
+                                .foregroundStyle(theme.textTertiary)
+                            TextField("0", text: minutesText)
+                                .textFieldStyle(.plain)
+                                .multilineTextAlignment(.trailing)
+                                .frame(width: 22)
+                                .padding(.leading, 4)
+                            Text("min")
+                                .foregroundStyle(theme.textTertiary)
                         }
-                        HStack(spacing: 0) {
+                        .fixedSize()
+                        HStack(spacing: 4) {
                             Image(systemName: "thermometer.medium")
                                 .font(.system(size: 10))
-                                .padding(.trailing, 4)
                             TextField("0", text: temperatureText)
                                 .textFieldStyle(.plain)
-                                .frame(width: 14)
+                                .multilineTextAlignment(.trailing)
+                                .frame(width: 36)
                             Text("°C")
                                 .foregroundStyle(theme.textTertiary)
                         }
-                        TextField("Notes", text: $step.notes)
-                            .textFieldStyle(.plain)
-                            .foregroundStyle(theme.textSecondary)
+                        .fixedSize()
 
                         Spacer(minLength: 0)
 
@@ -1120,6 +1132,12 @@ private struct StepRow: View {
                     }
                     .font(theme.bodyFont(11))
                     .foregroundStyle(theme.textSecondary)
+
+                    TextField("Notes", text: $step.notes, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(theme.bodyFont(11))
+                        .foregroundStyle(theme.textSecondary)
+                        .lineLimit(1...4)
 
                     if step.table != nil {
                         StepTableEditor(
