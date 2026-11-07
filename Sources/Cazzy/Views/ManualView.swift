@@ -50,7 +50,7 @@ enum ManualContent {
 
     ## Everything autosaves
 
-    There is no save button anywhere in Cazzy. Every change — typing in a note, checking off a to-do, editing a protocol — writes to disk immediately. If you ever want to undo something, **⌘Z** works app-wide (see "Windows, Undo & Your Data").
+    There is no save button anywhere in Cazzy. Every change — typing in a note, checking off a to-do, editing a protocol — writes to disk on your Mac immediately. If you back up to Box, **⌘S** sends your latest changes there right away (otherwise that happens every 5 minutes — see "Windows, Undo & Your Data"). If you ever want to undo something, **⌘Z** works app-wide.
 
     ## Where to go next
 
@@ -74,11 +74,19 @@ enum ManualContent {
 
     Right-click a note for **Archive Note** or **Delete Note…**. Archiving just hides it from the normal list (it's still there, dimmed, under an "Archived" section) — deleting is permanent, though like everything else it's covered by **⌘Z**. The same right-click options exist for whole notebooks in the sidebar; a notebook can't be archived or deleted if it's the only active one left, since new notes always need somewhere to go.
 
-    ## Preview vs. Edit
+    ## View vs. Edit
 
-    The eye/pencil icon at the top-right of a note toggles between **editing** the raw markdown and **previewing** the rendered result — headings, bold/italic, bullet and numbered lists, checklists, tables, block quotes, and embedded images all render properly in Preview. Executable code blocks, plate maps, and gel maps (see their own topics) are only interactive in Preview mode.
+    Every entry has two modes. **View** shows the finished, formatted entry — headings, bold/italic, bullet and numbered lists, checklists, tables, block quotes, and embedded images all render properly. **Edit** shows the raw text you type into. The eye/pencil icon at the top-right of an entry switches between them. Executable code blocks, plate maps, and gel maps (see their own topics) are only interactive in View mode.
 
-    ## Word count
+    Entries **open in View mode, scrolled to the bottom** — where your latest writing usually is. A brand-new, empty entry opens straight in Edit mode, since there's nothing to view yet.
+
+    Switching keeps your place: click the pencil while reading a paragraph halfway down, and Edit opens with that same paragraph at the top; switch back and View returns to where you were editing.
+
+    ## Referencing a protocol
+
+    To record that you used a protocol in an entry, click the **clipboard** button in the formatting toolbar and pick the protocol (and which saved version, if it has any). Cazzy asks for an optional name for this use — e.g. "KO vs WT lysates — blot 2" — then inserts a link to the protocol at your cursor. In View mode, clicking that link opens the protocol. The protocol, in turn, lists this entry under **Used in Notebook Entries** (see "Protocols"). Deleting the link from the entry removes the reference.
+
+    ## Spell check and word count
 
     While editing, misspelled words get a red underline. Right-click one to pick a suggested spelling, or choose **Learn Spelling** so Cazzy (and your Mac) stops flagging it — handy for gene, reagent, and cell-line names. Cazzy never changes a word on its own; spell check only points things out.
 
@@ -90,7 +98,7 @@ enum ManualContent {
 
     ## The formatting toolbar
 
-    While editing (not previewing) a note, a toolbar sits just above the text area:
+    While editing a note (Edit mode, not View), a toolbar sits just above the text area:
 
     | Button | What it does |
     |---|---|
@@ -100,17 +108,18 @@ enum ManualContent {
     | **Insert code block** | Only shown in Dry Lab notebooks — see "Code Environments & Executable Code" |
     | **Heading** | Prefixes the current line(s) with `## ` |
     | **Bullet list** | Prefixes the current line(s) with `- ` |
-    | **Checklist** | Adds a checkbox to the start of the current line(s) — renders as a real checkbox in Preview |
+    | **Checklist** | Adds a checkbox to the start of the current line(s) — renders as a real checkbox in View mode |
     | **Insert special character** | Opens a grid of your configured special-character shortcuts — click one to insert it |
     | **Insert image** | Copies a photo into the note as an inline image |
     | **Link file** | Turns the highlighted text into a clickable link to a file on your Mac — see "Linked Files" |
+    | **Reference a protocol** (clipboard) | Inserts a link to a protocol and version you used — see "Notebooks & Notes" |
     | **Insert plate map** / **Insert gel map** | Only shown in Wet Lab (or shared) notebooks — see their own topics |
 
     Bold/Italic/Code wrap whatever's currently selected; Heading/Bullet/Checklist apply to whichever line(s) your cursor or selection touches, and toggle back off if the line already has that prefix.
 
     ## Greek letters and fractions
 
-    You don't need special characters for common science notation — typing a LaTeX-style command directly renders it in Preview automatically: a backslash followed by a Greek letter's spelled-out name (lowercase for the lowercase letter, capitalized for the uppercase one — alpha, beta, theta, Delta, Omega, and the rest of the Greek alphabet), or a backslash, "frac", and two curly-brace groups for a fraction. These work whether or not they're wrapped in dollar signs, the way you'd write inline math in LaTeX.
+    You don't need special characters for common science notation — typing a LaTeX-style command directly renders it in View mode automatically: a backslash followed by a Greek letter's spelled-out name (lowercase for the lowercase letter, capitalized for the uppercase one — alpha, beta, theta, Delta, Omega, and the rest of the Greek alphabet), or a backslash, "frac", and two curly-brace groups for a fraction. These work whether or not they're wrapped in dollar signs, the way you'd write inline math in LaTeX.
 
     Underline, superscript, and subscript also work directly in the text, using the same wrapping tags web pages use for them — an opening and closing pair of angle-bracket tags named "u" around underlined text, "sup" around superscript, and "sub" around subscript.
 
@@ -220,17 +229,17 @@ enum ManualContent {
 
     A protocol has a **name**, a **purpose**, optional **Buffers & Solutions**, a list of **Materials & Reagents** (name/amount/unit/notes, plus a category), and a list of **Steps**. Each item in Steps is one of five kinds — a numbered **Step**, a non-numbered **Note** or **Warning** callout for things that interrupt the flow rather than being an actual procedure step, a **Pause Point**, or a **Section** heading. Steps additionally have an **importance** (Normal / Important / Critical, shown as a colored flag), and optional duration, temperature, and notes.
 
-    Drag the handle on any step or reagent row to reorder it.
+    Each list has its add buttons underneath it: **+ Buffer**, **+ Material**, and under Steps **+ Step**, **+ Section**, **+ Note**, **+ Warning**, and **+ Pause Point**. **⇧⌘↩** adds a step from the keyboard. Drag the handle on any step or reagent row to reorder it.
 
     ## Sections
 
-    Long protocols can be split into sections — "Day 1 — Cell prep", "Day 2 — Tagmentation", and so on. Choose **Add Section** from the **+** menu next to Steps, then type the heading. Every step below a section heading belongs to it until the next heading, and step numbers start again at 1 under each section. Sections drag around like any other step; to turn an existing step into a section heading (or back), click its badge and pick a different type.
+    Long protocols can be split into sections — "Day 1 — Cell prep", "Day 2 — Tagmentation", and so on. Click **+ Section** under the Steps list, then type the heading. Every step below a section heading belongs to it until the next heading, and step numbers start again at 1 under each section. Sections drag around like any other step; to turn an existing step into a section heading (or back), click its badge and pick a different type.
 
     Sections carry through everywhere the protocol goes: the printout, the Box backup, and the checklist in a notebook entry created from a scheduled experiment.
 
     ## Pause points
 
-    A pause point marks a safe place to stop partway through — choose **Add Pause Point** from the **+** menu next to Steps (or turn an existing item into one by clicking its badge), drag it to where it belongs, and type how to keep things until you carry on, e.g. "Lysates can be stored at −80 °C for up to a month." It isn't numbered, and it stands out in teal with a ⏸ symbol and "safe to stop here" in the editor, View mode, the printout and the Box backup. When you schedule the protocol, pause points also appear in the experiment entry's checklist.
+    A pause point marks a safe place to stop partway through — click **+ Pause Point** under the Steps list (or turn an existing item into one by clicking its badge), drag it to where it belongs, and type how to keep things until you carry on, e.g. "Lysates can be stored at −80 °C for up to a month." It isn't numbered, and it stands out in teal with a ⏸ symbol and "safe to stop here" in the editor, View mode, the printout and the Box backup. When you schedule the protocol, pause points also appear in the experiment entry's checklist.
 
     ## Tables and dilutions in a step
 
@@ -249,13 +258,13 @@ enum ManualContent {
 
     ## Materials & Reagents
 
-    Click the **+** next to Materials & Reagents and pick what kind of material you're adding — Chemicals & Reagents, Antibodies, Cells & Biological, Kits, Consumables, Equipment & Machines, Software, or Other. Materials are then listed grouped under those headings, in that order, so the bench chemicals, the plasticware and the instruments you need to book each sit together. To move a material to a different group, either click the small category icon in its row and choose another, or grab its **≡** handle and drag it — onto another material to slot it in there (it takes on that material's category), or onto a category heading to add it to the end of that group. While you drag, every category is shown, including empty ones, so you can drop into any of them. Dragging within a group just reorders.
+    Click **+ Material** under Materials & Reagents and pick what kind of material you're adding — Chemicals & Reagents, Antibodies, Cells & Biological, Kits, Consumables, Equipment & Machines, Software, or Other. Materials are then listed grouped under those headings, in that order, so the bench chemicals, the plasticware and the instruments you need to book each sit together. To move a material to a different group, either click the small category icon in its row and choose another, or grab its **≡** handle and drag it — onto another material to slot it in there (it takes on that material's category), or onto a category heading to add it to the end of that group. While you drag, every category is shown, including empty ones, so you can drop into any of them. Dragging within a group just reorders.
 
     Materials added before categories existed show up as **Uncategorized** (with a grey icon) and keep their original order until you sort them. The same grouping is used in the printout and the Box backup.
 
     ## Buffers & Solutions
 
-    This section sits above Materials & Reagents and is entirely optional — a protocol that doesn't need buffers made up beforehand just leaves it empty. Click its **+** to add a recipe, which has:
+    This section sits above Materials & Reagents and is entirely optional — a protocol that doesn't need buffers made up beforehand just leaves it empty. Click **+ Buffer** underneath it to add a recipe, which has:
 
     - A **name** and how much it **makes** (e.g. "500 mL").
     - A table of **components**, each with a **stock** and a **final** concentration. Leave **Amount to add** blank and Cazzy works it out for you (C₁V₁ = C₂V₂) — e.g. 1 M stock to 50 mM final in 500 mL shows **25 mL**. It understands M, mM, µM, nM, X, %, g/L, mg/mL, µg/mL, ng/µL and U/mL; stock and final need to be in the same kind of unit. Change the "makes" volume and every amount updates. To use your own amount instead (e.g. "2.92 g" of a powder), just type it.
@@ -270,17 +279,27 @@ enum ManualContent {
 
     Click **Save New Version** any time you want to snapshot the current draft (an optional note about what changed is a good idea). This doesn't stop you from continuing to edit — the live protocol is always your current draft, and every saved version is kept in **Version History**, each with a **Restore** button that loads that snapshot back into the draft (restoring doesn't itself create a new version — save again if you want to keep the restored state in history too).
 
+    ## Used in Notebook Entries
+
+    Right under the purpose, every protocol lists the notebook entries that reference it (see "Referencing a protocol" under "Notebooks & Notes"), with the entry's notebook, date, the version used, and the name you gave that use as a subtitle. A version tag turns orange and says **older** when the entry used a version that's since been superseded. Click an entry to open it **in its own window** beside the protocol, scrolled to and highlighting the spot where it references the protocol.
+
     ## Scheduling a protocol
 
     Click **Schedule…** in a protocol's editor to jump straight to the Calendar with a new-experiment sheet pre-filled from it.
 
     ## Printing
 
-    Click **Print** for a clean, black-and-white printout (or "Save as PDF" from the print panel) — regardless of your current theme, so a printed protocol stays legible on paper. It includes your buffer recipes (with calculated amounts filled in), the reagent table, section headings, numbered steps with their duration/temperature/importance, and Note/Warning callouts as colored side-bar blocks.
+    Click **Print** for a printout laid out like View mode — buffer cards with calculated amounts filled in, materials grouped by category, section headings, numbered step cards with their duration, temperature, importance and tables, and colored Note/Warning/Pause Point callouts — but always dark text on white, whatever your theme, so it stays legible on paper. Each step has an empty circle to tick off with a pen. Pages only break between items, so a step or buffer card is never split across two pages, and blank placeholder steps are left out.
 
     ## Sharing a protocol with someone else
 
-    **Export…** saves a `.cazzyprotocol` file you can send to a labmate; **Import…** reads one back in. If you import an update to a protocol you already have, Cazzy merges the changes automatically when there's no real conflict, or opens a **merge view** letting you pick which version of each conflicting item (name, purpose, a specific reagent, a specific step) to keep, side by side.
+    The **Export** menu offers three formats:
+
+    - **PDF…** — the same layout as the printout, for emailing or reading anywhere.
+    - **Markdown…** — plain text with formatting marks, which opens in any text editor.
+    - **Cazzy Protocol File…** — a `.cazzyprotocol` file for another Cazzy user.
+
+    To bring a shared protocol in, double-click the `.cazzyprotocol` file in Finder (Cazzy opens and imports it), or use the import button at the top of the Protocols list. If you import an update to a protocol you already have, Cazzy merges the changes automatically when there's no real conflict, or opens a **merge view** letting you pick which version of each conflicting item (name, purpose, a specific reagent, a specific step) to keep, side by side.
     """
 
     static let plateMaps = """
@@ -345,7 +364,7 @@ enum ManualContent {
 
     ## Adding and running a block
 
-    The toolbar's **Insert code block** button drops in a code block you can type directly into. Switch the note to **Preview** to actually run it — click **Run**. While running you get a **Cancel** button; once it finishes you see the exit code, how long it took, and the full stdout/stderr output, plus a collapsible **Environment** section recording the exact interpreter version (and installed package list, for Python/R) that produced that result — useful for tracing back what actually generated a given output later. If you edit the code after running it, a warning appears letting you know the shown result is now stale.
+    The toolbar's **Insert code block** button drops in a code block you can type directly into. Switch the note to **View** mode to actually run it — click **Run**. While running you get a **Cancel** button; once it finishes you see the exit code, how long it took, and the full stdout/stderr output, plus a collapsible **Environment** section recording the exact interpreter version (and installed package list, for Python/R) that produced that result — useful for tracing back what actually generated a given output later. If you edit the code after running it, a warning appears letting you know the shown result is now stale.
 
     Code always runs in your real login shell (the same one Terminal uses), and only ever runs when you explicitly click Run — never automatically.
     """
@@ -359,7 +378,7 @@ enum ManualContent {
 
     ## Linking a file inside a note
 
-    To turn words in a note into a hyperlink to a file, highlight them while editing, click the **Link file** button (the chain-link icon) in the note's formatting toolbar, and choose the file. If nothing is highlighted, Cazzy asks you to highlight something first. The highlighted words become `[your words](cazzy-file:…)` — you can retype the words inside the square brackets later, but leave the part in parentheses alone. Switch to **Preview** and click the link to open the file from its original location.
+    To turn words in a note into a hyperlink to a file, highlight them while editing, click the **Link file** button (the chain-link icon) in the note's formatting toolbar, and choose the file. If nothing is highlighted, Cazzy asks you to highlight something first. The highlighted words become `[your words](cazzy-file:…)` — you can retype the words inside the square brackets later, but leave the part in parentheses alone. Switch to **View** mode and click the link to open the file from its original location.
 
     A file linked this way also shows up in the notebook's **Files** tab, which is what keeps the link working if the file is moved. If you remove it from the Files tab, links to it in notes stop working until you link the file again.
 
@@ -412,7 +431,7 @@ enum ManualContent {
 
     ## Multiple windows
 
-    The main notebook window, the To-Do list, and the Calendar are each their own separate window, openable from the sidebar (or the Calendar's own toolbar, for To-Do). You can have all three open side by side. Clicking the Dock icon when no window is open brings the main window back; it won't open a second one if a window is already open.
+    The main notebook window, the To-Do list, and the Calendar are each their own separate window, openable from the sidebar (or the Calendar's own toolbar, for To-Do). You can have all three open side by side. A notebook entry can also open in a window of its own — clicking an entry in a protocol's "Used in Notebook Entries" list does this, so the protocol stays on screen beside it. Clicking the Dock icon when no window is open brings the main window back; it won't open a second one if a window is already open.
 
     ## Undo, app-wide
 
@@ -441,6 +460,7 @@ enum ManualContent {
 
     | Shortcut | Action |
     |---|---|
+    | ⌘S | Back up to Box now (when Box backup is on) |
     | ⌘Z | Undo |
     | ⌘⇧Z | Redo |
     | ⌘F | Find within the open note |
@@ -450,6 +470,13 @@ enum ManualContent {
     | ⌘− | Decrease text size, app-wide |
     | ⌘0 | Reset text size to normal |
     | ⌘, | Open Settings |
+
+    ## In a protocol
+
+    | Shortcut | Action |
+    |---|---|
+    | ⇧⌘E | Switch between View and Edit |
+    | ⇧⌘↩ | Add a step |
 
     ## In dialogs and sheets
 
