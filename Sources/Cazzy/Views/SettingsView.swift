@@ -250,7 +250,7 @@ private struct BoxBackupSection: View {
                 }
                 .disabled(backup.folderURL == nil || backup.isBackingUp)
             }
-            Text("Everything goes in a \"Cazzy\" folder inside the one you choose: a folder per notebook with each entry as a Markdown file, plus your protocols in \"Protocol Library\". Box Drive uploads them. Changes are backed up a few seconds after you stop typing. Deleting an entry here doesn't delete its backup.")
+            Text("Everything goes in a \"Cazzy\" folder inside the one you choose: a folder per notebook with each entry as a Markdown file, plus your protocols in \"Protocol Library\". Box Drive uploads them. Changes are copied to Box every 5 minutes, when you press ⌘S, and when you quit (your entries are always saved on this Mac as you type). Deleting an entry here doesn't delete its backup.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }

@@ -54,4 +54,4 @@ folder you choose (normally inside Box Drive, `~/Library/CloudStorage/Box-Box`):
 `Cazzy/<Notebook>/<yyyy-MM-dd> <Title>.md` (a folder per notebook, images in
 `<Notebook>/images/`) and `Cazzy/Protocol Library/<Protocol>.md`. Box Drive does
 the uploading — no Box API credentials are involved. Changed items are
-rewritten a few seconds after you stop typing; renamed entries have their file moved; deleted entries keep their backup file.
+copied to Box every 5 minutes, on ⌘S (File → Back Up to Box Now), and on quit; renamed entries have their file moved; deleted entries keep their backup file.

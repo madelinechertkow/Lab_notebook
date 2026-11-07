@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import AppKit
 
 /// Mirrors every note into a user-chosen folder as a plain Markdown file — normally a folder
 /// inside Box Drive (~/Library/CloudStorage/Box-Box), which then uploads whatever lands there.
@@ -32,11 +33,16 @@ final class BoxBackupService: ObservableObject {
 
     private static let enabledKey = "boxBackupEnabled"
     private static let folderKey = "boxBackupFolderPath"
-    /// Notes save on every keystroke; wait for a pause in typing before writing to Box.
-    private static let debounceInterval: TimeInterval = 5
+    /// Notes save to data.json on every keystroke, but Box only gets a copy this often (or
+    /// when asked: ⌘S / Back Up Now, and on quit). Writing to Box Drive after every pause in
+    /// typing kept it re-uploading the same entry over and over while you worked.
+    static let backupInterval: TimeInterval = 5 * 60
 
     private let queue = DispatchQueue(label: "com.madelinechertkow.cazzy.boxbackup")
-    private var pendingWork: DispatchWorkItem?
+    /// The latest unsaved-to-Box state, waiting for the next timer tick. Main thread only.
+    private var pendingSnapshot: Snapshot?
+    private var timer: Timer?
+    private var terminationObserver: NSObjectProtocol?
     private let manifestURL: URL
 
     /// Everything Cazzy writes goes under this subfolder of the user's chosen folder.
@@ -70,6 +76,20 @@ final class BoxBackupService: ObservableObject {
         if let path = UserDefaults.standard.string(forKey: Self.folderKey) {
             folderURL = URL(fileURLWithPath: path, isDirectory: true)
         }
+        let timer = Timer(timeInterval: Self.backupInterval, repeats: true) { [weak self] _ in
+            self?.flushPending()
+        }
+        timer.tolerance = 10
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+        // Don't leave the last few minutes of edits out of Box when the app quits. Waits for
+        // the write so it finishes before the process exits; only changed files are written.
+        terminationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self, let snapshot = self.takePending() else { return }
+            self.queue.sync { self.run(snapshot) }
+        }
     }
 
     func setEnabled(_ enabled: Bool) {
@@ -82,22 +102,31 @@ final class BoxBackupService: ObservableObject {
         UserDefaults.standard.set(url.path, forKey: Self.folderKey)
     }
 
-    /// Called after every store save. Coalesces bursts (typing) into one backup.
+    /// Called after every store save. Only remembers the latest state; the 5-minute timer,
+    /// ⌘S, or quitting is what actually writes it to Box.
     func scheduleBackup(notes: [Note], notebooks: [Notebook], protocols: [LabProtocol]) {
         guard isEnabled, folderURL != nil else { return }
-        pendingWork?.cancel()
-        let snapshot = Snapshot(notes: notes, notebooks: notebooks, protocols: protocols)
-        let work = DispatchWorkItem { [weak self] in self?.run(snapshot) }
-        pendingWork = work
-        queue.asyncAfter(deadline: .now() + Self.debounceInterval, execute: work)
+        pendingSnapshot = Snapshot(notes: notes, notebooks: notebooks, protocols: protocols)
     }
 
-    /// Runs immediately (e.g. the "Back Up Now" button), skipping the typing debounce.
+    /// Runs immediately (the "Back Up Now" button, ⌘S), without waiting for the timer.
     func backUpNow(notes: [Note], notebooks: [Notebook], protocols: [LabProtocol]) {
         guard folderURL != nil else { return }
-        pendingWork?.cancel()
+        pendingSnapshot = nil
         let snapshot = Snapshot(notes: notes, notebooks: notebooks, protocols: protocols)
         queue.async { [weak self] in self?.run(snapshot) }
+    }
+
+    /// Timer tick: writes whatever changed since the last backup, if anything did.
+    private func flushPending() {
+        guard let snapshot = takePending() else { return }
+        queue.async { [weak self] in self?.run(snapshot) }
+    }
+
+    private func takePending() -> Snapshot? {
+        guard isEnabled, folderURL != nil, let snapshot = pendingSnapshot else { return nil }
+        pendingSnapshot = nil
+        return snapshot
     }
 
     // MARK: - Backup (runs on `queue`)

@@ -96,6 +96,20 @@ struct CazzyApp: App {
                 Button("Redo") { store.redo() }
                     .keyboardShortcut("z", modifiers: [.command, .shift])
             }
+            // Box only gets a copy every 5 minutes (see BoxBackupService); ⌘S pushes the
+            // latest state there right away. Your notes are already saved locally on every
+            // keystroke either way — this is only about the Box copy.
+            CommandGroup(after: .saveItem) {
+                Button("Back Up to Box Now") {
+                    let backup = store.boxBackup
+                    guard backup.isEnabled, backup.folderURL != nil else {
+                        NSSound.beep()
+                        return
+                    }
+                    backup.backUpNow(notes: store.notes, notebooks: store.notebooks, protocols: store.protocols)
+                }
+                .keyboardShortcut("s", modifiers: .command)
+            }
             // Find within the currently-open entry — routes to AppKit's own NSTextFinder on
             // whichever NSTextView is focused (see `usesFindBar` in FormattingTextEditor),
             // the same native find bar TextEdit and Xcode use, so highlighting, match count,

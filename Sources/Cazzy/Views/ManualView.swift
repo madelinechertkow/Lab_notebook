@@ -431,7 +431,7 @@ enum ManualContent {
     - One folder per notebook (created even while it's empty), with each entry saved as a Markdown file named by date and title — images you inserted go in that notebook's **images** folder.
     - A **Protocol Library** folder with each protocol as a readable document: buffers, materials, sections and steps.
 
-    Changes are backed up a few seconds after you stop typing, and only what changed is rewritten. Renaming an entry or moving it to another notebook moves its file too. Deleting something in Cazzy does **not** delete its backup, so Box keeps a lasting record. **Choose Folder…** changes where backups go; **Back Up Now** runs one immediately.
+    Changes are copied to Box every 5 minutes, whenever you press **⌘S** (File → Back Up to Box Now), and when you quit; only what changed is rewritten. Your entries are always saved on this Mac as you type — the timer only affects the Box copy. Renaming an entry or moving it to another notebook moves its file too. Deleting something in Cazzy does **not** delete its backup, so Box keeps a lasting record. **Choose Folder…** changes where backups go; **Back Up Now** runs one immediately.
     """
 
     static let shortcuts = """
