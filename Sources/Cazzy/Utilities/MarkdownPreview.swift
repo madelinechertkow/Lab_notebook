@@ -35,9 +35,17 @@ struct MarkdownPreview: View {
     /// entry is on screen when switching to Edit.
     var scrollTracker: PreviewScrollTracker? = nil
 
+    /// Segments and scroll anchors for a given entry text, so a redraw with unchanged text
+    /// (anything other than editing this entry) skips re-parsing it.
+    private static let layoutCache = MarkdownParseCache<(segments: [ContentSegment], anchors: [(id: String, offset: Int)])>(limit: 16)
+
     var body: some View {
-        let segments = ExecBlockParser.parse(markdown)
-        let anchors = PreviewAnchors.compute(markdown: markdown, segments: segments)
+        let layout = Self.layoutCache.value(for: markdown) { text in
+            let segments = ExecBlockParser.parse(text)
+            return (segments, PreviewAnchors.compute(markdown: text, segments: segments))
+        }
+        let segments = layout.segments
+        let anchors = layout.anchors
         // Only the first text segment containing the link carries the scroll target.
         let anchorSegmentID: String? = highlightLink.flatMap { link in
             segments.first { segment in
@@ -463,7 +471,38 @@ func replaceFractionNotation(_ text: String) -> String {
     return result
 }
 
+/// Remembers recent parse results keyed by the exact text parsed. Parsing a long entry costs
+/// several milliseconds, and SwiftUI re-runs view bodies on every store change (a keystroke in
+/// another window, ticking off a to-do), so without this View mode re-parsed the whole entry —
+/// twice, once for the blocks and once for the scroll anchors — on every redraw. Parsing is a
+/// pure function of the text, so a cached result is always identical to a fresh one.
+/// Only touched from the main thread (view bodies).
+final class MarkdownParseCache<Value> {
+    private var values: [String: Value] = [:]
+    private var order: [String] = []
+    private let limit: Int
+
+    init(limit: Int) { self.limit = limit }
+
+    func value(for key: String, compute: (String) -> Value) -> Value {
+        if let cached = values[key] { return cached }
+        let value = compute(key)
+        values[key] = value
+        order.append(key)
+        if order.count > limit {
+            values[order.removeFirst()] = nil
+        }
+        return value
+    }
+}
+
+private let markdownBlockCache = MarkdownParseCache<[MarkdownBlock]>(limit: 64)
+
 private func markdownBlocks(from text: String) -> [MarkdownBlock] {
+    markdownBlockCache.value(for: text, compute: parseMarkdownBlocks)
+}
+
+private func parseMarkdownBlocks(from text: String) -> [MarkdownBlock] {
     let preprocessed = preprocessInlineStyleTags(
         replaceGreekLetterCommands(
             replaceFractionNotation(
@@ -747,10 +786,22 @@ private struct MarkdownImageView: View {
         NoteImageStore.resolve(url) ?? url
     }
 
+    /// Decoded images, so a redraw doesn't re-read and re-decode the file from disk.
+    /// Note images are stored under fresh UUID filenames and never rewritten, so a URL
+    /// always maps to the same picture.
+    private static let imageCache = NSCache<NSURL, NSImage>()
+
+    private static func loadImage(_ url: URL) -> NSImage? {
+        if let cached = imageCache.object(forKey: url as NSURL) { return cached }
+        guard let image = NSImage(contentsOf: url) else { return nil }
+        imageCache.setObject(image, forKey: url as NSURL)
+        return image
+    }
+
     var body: some View {
         Group {
             if resolvedURL.isFileURL {
-                if let nsImage = NSImage(contentsOf: resolvedURL) {
+                if let nsImage = Self.loadImage(resolvedURL) {
                     Image(nsImage: nsImage)
                         .resizable()
                         .scaledToFit()

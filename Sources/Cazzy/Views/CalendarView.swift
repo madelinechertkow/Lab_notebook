@@ -249,8 +249,7 @@ struct CalendarView: View {
     }
 
     private var weekTitle: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "MMMM yyyy", options: 0, locale: .current)
+        let formatter = DateFormatterCache.template("MMMM yyyy")
         return formatter.string(from: weekStart)
     }
 
@@ -390,14 +389,12 @@ private struct DayHeader: View {
     }
 
     private var weekdayText: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE"
+        let formatter = DateFormatterCache.format("EEE")
         return formatter.string(from: day)
     }
 
     private var dayNumberText: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "d"
+        let formatter = DateFormatterCache.format("d")
         return formatter.string(from: day)
     }
 }
@@ -550,8 +547,7 @@ private struct MonthOverview: View {
     }
 
     private var monthTitle: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "MMMM yyyy", options: 0, locale: .current)
+        let formatter = DateFormatterCache.template("MMMM yyyy")
         return formatter.string(from: monthAnchor)
     }
 

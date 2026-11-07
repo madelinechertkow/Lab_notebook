@@ -58,8 +58,7 @@ struct CalendarWeekGrid: View {
     }
 
     static func hourLabel(_ hour: Int) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: .current)
+        let formatter = DateFormatterCache.template("j")
         let date = Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: Date()) ?? Date()
         return formatter.string(from: date)
     }
@@ -409,8 +408,7 @@ private struct ExperimentBlock: View {
     }
 
     private var timeRangeText: String {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
+        let formatter = DateFormatterCache.shortTime
         return "\(formatter.string(from: experiment.start))–\(formatter.string(from: experiment.end))"
     }
 

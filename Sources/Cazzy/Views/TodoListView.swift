@@ -155,8 +155,7 @@ struct TodoListView: View {
     }
 
     private var weekTitle: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "MMM d", options: 0, locale: .current)
+        let formatter = DateFormatterCache.template("MMM d")
         guard let weekEnd = Calendar.current.date(byAdding: .day, value: 6, to: weekStart) else {
             return formatter.string(from: weekStart)
         }
@@ -187,8 +186,7 @@ struct TodoListView: View {
     }
 
     private func dayChipLabel(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE d"
+        let formatter = DateFormatterCache.format("EEE d")
         return formatter.string(from: date)
     }
 
@@ -224,8 +222,7 @@ struct TodoListView: View {
     }
 
     private func dayHeaderLabel(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE, MMM d"
+        let formatter = DateFormatterCache.format("EEEE, MMM d")
         return formatter.string(from: date)
     }
 
