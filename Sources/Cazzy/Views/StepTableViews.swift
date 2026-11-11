@@ -241,3 +241,171 @@ struct DilutionCalculatorSheet: View {
         .background(theme.editorBackground)
     }
 }
+
+/// Edit-mode setup for a step's live dilution calculator: what's being diluted, the dilution,
+/// what it goes into, and an optional volume to start from in View mode.
+struct LiveDilutionEditor: View {
+    @EnvironmentObject var theme: ThemeStore
+    @Binding var dilution: LiveDilution
+    let onRemove: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "drop.triangle")
+                    .font(.system(size: 10))
+                    .foregroundStyle(theme.accentDeep)
+                Text("Live dilution calculator — usable in View mode")
+                    .font(theme.bodyFont(11, weight: .semibold))
+                    .foregroundStyle(theme.textSecondary)
+                Spacer(minLength: 0)
+                Button(action: onRemove) {
+                    Label("Remove calculator", systemImage: "trash")
+                        .labelStyle(.iconOnly)
+                        .font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.textTertiary)
+                .help("Remove the dilution calculator from this step")
+            }
+
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
+                field("What's diluted", text: $dilution.stockName, prompt: "e.g. Primary antibody")
+                field("Dilution", text: $dilution.factor, prompt: "e.g. 1:1000")
+                field("Dilute in", text: $dilution.diluent, prompt: "e.g. 5% BSA in PBST")
+                field("Starting volume", text: $dilution.defaultVolume, prompt: "e.g. 10 mL (optional)")
+            }
+            .padding(8)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(theme.divider, lineWidth: 1)
+            )
+
+            Group {
+                if DilutionMath.factor(dilution.factor) == nil {
+                    Text("Enter the dilution as 1:1000 (or 1:2, 1:50…).")
+                } else if let amounts = dilution.amounts(for: dilution.defaultVolume) {
+                    Text("Preview: \(BufferMath.formatVolume(amounts.stock)) \(dilution.stockLabel) + \(BufferMath.formatVolume(amounts.diluent)) \(dilution.diluentLabel)")
+                } else {
+                    Text("In View mode, type the volume you need and the amounts are worked out.")
+                }
+            }
+            .font(theme.bodyFont(10))
+            .foregroundStyle(theme.textTertiary)
+        }
+        .padding(.top, 4)
+    }
+
+    private func field(_ label: String, text: Binding<String>, prompt: String) -> some View {
+        GridRow {
+            Text(label)
+                .font(theme.bodyFont(11))
+                .foregroundStyle(theme.textSecondary)
+                .gridColumnAlignment(.trailing)
+            TextField("", text: text, prompt: Text(prompt))
+                .textFieldStyle(.plain)
+                .font(theme.bodyFont(11))
+                .foregroundStyle(theme.textPrimary)
+        }
+    }
+}
+
+/// View-mode dilution calculator: the volume is typed at the bench and the amounts update live.
+/// Nothing typed here is saved to the protocol.
+struct LiveDilutionCalculator: View {
+    @EnvironmentObject var theme: ThemeStore
+    let dilution: LiveDilution
+    var fontSize: CGFloat = 14
+
+    private static let units = ["µL", "mL", "L"]
+
+    @State private var amount: String = ""
+    @State private var unit: String = "mL"
+    @State private var didPrefill = false
+
+    private var volumeText: String {
+        let trimmed = amount.trimmingCharacters(in: .whitespaces)
+        // A bare number uses the picked unit; "500 µL" typed in full wins over the picker.
+        if let number = BufferMath.leadingNumber(trimmed), number.rest.isEmpty { return "\(trimmed) \(unit)" }
+        return trimmed
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(dilution.summary, systemImage: "drop.triangle")
+                .font(theme.bodyFont(fontSize - 1, weight: .semibold))
+                .foregroundStyle(theme.textSecondary)
+
+            HStack(spacing: 8) {
+                Text("Final volume")
+                    .font(theme.bodyFont(fontSize - 1))
+                    .foregroundStyle(theme.textSecondary)
+                TextField("", text: $amount, prompt: Text("e.g. 10"))
+                    .textFieldStyle(.roundedBorder)
+                    .font(theme.bodyFont(fontSize))
+                    .frame(width: 90)
+                Picker("", selection: $unit) {
+                    ForEach(Self.units, id: \.self) { Text($0).tag($0) }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 130)
+            }
+
+            if let result = dilution.amounts(for: volumeText) {
+                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 6) {
+                    row(dilution.stockLabel, BufferMath.formatVolume(result.stock), bold: true)
+                    row(dilution.diluentLabel, BufferMath.formatVolume(result.diluent), bold: true)
+                    Divider().overlay(theme.divider)
+                    row("Total", BufferMath.formatVolume(result.total), bold: false)
+                }
+            } else if DilutionMath.factor(dilution.factor) == nil {
+                Text("This calculator has no dilution set yet — add one (like 1:1000) in Edit mode.")
+                    .font(theme.bodyFont(fontSize - 2))
+                    .foregroundStyle(theme.textTertiary)
+            } else {
+                Text("Type the volume you want to make to see how much of each to add.")
+                    .font(theme.bodyFont(fontSize - 2))
+                    .foregroundStyle(theme.textTertiary)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(theme.cardBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(theme.accentDeep.opacity(0.35), lineWidth: 1)
+        )
+        .onAppear(perform: prefill)
+    }
+
+    private func row(_ name: String, _ value: String, bold: Bool) -> some View {
+        GridRow {
+            Text(name)
+                .font(theme.bodyFont(fontSize))
+                .foregroundStyle(theme.textPrimary)
+            Text(value)
+                .font(theme.bodyFont(fontSize, weight: bold ? .bold : .regular))
+                .foregroundStyle(bold ? theme.accentDeep : theme.textSecondary)
+                .monospacedDigit()
+        }
+    }
+
+    /// Splits the protocol's starting volume ("10 mL") into the number field and unit picker.
+    private func prefill() {
+        guard !didPrefill else { return }
+        didPrefill = true
+        guard let parsed = BufferMath.leadingNumber(dilution.defaultVolume) else { return }
+        let rest = parsed.rest.trimmingCharacters(in: .whitespaces).lowercased()
+            .replacingOccurrences(of: "μ", with: "µ").replacingOccurrences(of: "u", with: "µ")
+        if let match = Self.units.first(where: { $0.lowercased() == rest }) {
+            unit = match
+            amount = BufferMath.formatNumber(parsed.value)
+        } else {
+            amount = dilution.defaultVolume
+        }
+    }
+}

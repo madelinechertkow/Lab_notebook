@@ -1121,9 +1121,16 @@ private struct StepRow: View {
                             } label: {
                                 Label("Dilution Calculator…", systemImage: "drop.triangle")
                             }
+                            Divider()
+                            Button {
+                                step.dilution = step.dilution ?? LiveDilution()
+                            } label: {
+                                Label("Live Dilution Calculator (use in View mode)", systemImage: "function")
+                            }
+                            .disabled(step.dilution != nil)
                         } label: {
                             Image(systemName: "tablecells")
-                                .foregroundStyle(step.table == nil ? theme.textTertiary : theme.accentDeep)
+                                .foregroundStyle(step.table == nil && step.dilution == nil ? theme.textTertiary : theme.accentDeep)
                         }
                         .menuStyle(.borderlessButton)
                         .menuIndicator(.hidden)
@@ -1146,6 +1153,16 @@ private struct StepRow: View {
                                 set: { step.table = $0 }
                             ),
                             onRemove: { step.table = nil }
+                        )
+                    }
+
+                    if step.dilution != nil {
+                        LiveDilutionEditor(
+                            dilution: Binding(
+                                get: { step.dilution ?? LiveDilution() },
+                                set: { step.dilution = $0 }
+                            ),
+                            onRemove: { step.dilution = nil }
                         )
                     }
                 }

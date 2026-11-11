@@ -252,6 +252,12 @@ enum ManualContent {
 
     **Add to Step** puts the result into the step as an ordinary table, so you can still edit any cell afterwards. Tables show up in View mode, the printout, and the Box backup.
 
+    ### Live dilution calculator
+
+    For a dilution whose volume changes from run to run, choose **Live Dilution Calculator** from the same table menu instead. In Edit mode you fill in what's being diluted, the dilution (e.g. 1:1000), what it's diluted in, and optionally a starting volume. In **View mode** the step shows a small calculator: type the final volume you need (pick µL, mL or L, or type the unit yourself, like "500 µL") and the amounts of stock and diluent update as you type. What you type in View mode isn't saved to the protocol. The printout and Markdown export show the dilution with the amounts for the starting volume.
+
+    The Protocols list is always in alphabetical order by title, so opening or editing a protocol doesn't move it.
+
     ## View mode — running a protocol
 
     Click **View** (⇧⌘E) at the top of a protocol to see it without any editing controls, in larger type — the version to have open at the bench. Buffers, materials and steps each get a circle you can tick as you go, and the top shows how many steps are done. Click **Edit** (⇧⌘E again) to go back; your ticks stay put if you pop into Edit to fix something. Ticks are only a working aid — they're cleared when you switch to a different protocol or quit Cazzy (**Clear Ticks** clears them yourself), and they're never saved into the protocol.

@@ -233,6 +233,10 @@ struct ProtocolRunView: View {
                     StepTableDisplay(table: table, fontSize: 14)
                         .padding(.top, 2)
                 }
+                if let dilution = step.dilution {
+                    LiveDilutionCalculator(dilution: dilution, fontSize: 14)
+                        .padding(.top, 2)
+                }
             }
             Spacer(minLength: 0)
         }

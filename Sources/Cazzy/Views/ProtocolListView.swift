@@ -18,7 +18,12 @@ struct ProtocolListView: View {
     }
 
     private var filteredProtocols: [LabProtocol] {
-        let base = store.protocols.sorted { $0.updatedAt > $1.updatedAt }
+        // Alphabetical by title, so opening (or editing) a protocol never reshuffles the list.
+        let base = store.protocols.sorted {
+            let order = $0.name.localizedStandardCompare($1.name)
+            if order != .orderedSame { return order == .orderedAscending }
+            return $0.id.uuidString < $1.id.uuidString
+        }
         let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
         guard !query.isEmpty else { return base }
         return base.filter {

@@ -91,6 +91,7 @@ enum ProtocolPrintLayout {
         step.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && step.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && step.table == nil
+            && step.dilution == nil
     }
 
     private static func sectionIsBlank(_ steps: [ProtocolStep], from sectionIndex: Int) -> Bool {
@@ -293,6 +294,13 @@ enum ProtocolPrintLayout {
                 }
                 if let table = step.table {
                     printTable(table)
+                        .padding(.top, 2)
+                }
+                if let dilution = step.dilution {
+                    Text(dilution.printedLine)
+                        .font(.system(size: 10))
+                        .foregroundStyle(PrintStyle.text)
+                        .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 2)
                 }
             }

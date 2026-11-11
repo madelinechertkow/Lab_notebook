@@ -259,6 +259,67 @@ struct StepTable: Codable, Equatable {
     }
 }
 
+/// A dilution set up while editing a protocol and worked out live in View mode: the protocol
+/// stores the recipe (what, how much, in what), the person at the bench types the volume they
+/// need and Cazzy shows how much of each to add.
+struct LiveDilution: Codable, Equatable {
+    var stockName: String = ""
+    /// "1:1000", "1/1000" or "1000".
+    var factor: String = ""
+    var diluent: String = ""
+    /// Volume pre-filled in View mode (e.g. "10 mL"); optional.
+    var defaultVolume: String = ""
+
+    init(stockName: String = "", factor: String = "", diluent: String = "", defaultVolume: String = "") {
+        self.stockName = stockName
+        self.factor = factor
+        self.diluent = diluent
+        self.defaultVolume = defaultVolume
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case stockName, factor, diluent, defaultVolume
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        stockName = try container.decodeIfPresent(String.self, forKey: .stockName) ?? ""
+        factor = try container.decodeIfPresent(String.self, forKey: .factor) ?? ""
+        diluent = try container.decodeIfPresent(String.self, forKey: .diluent) ?? ""
+        defaultVolume = try container.decodeIfPresent(String.self, forKey: .defaultVolume) ?? ""
+    }
+
+    var stockLabel: String { stockName.trimmingCharacters(in: .whitespaces).isEmpty ? "Stock" : stockName }
+    var diluentLabel: String { diluent.trimmingCharacters(in: .whitespaces).isEmpty ? "Diluent" : diluent }
+
+    /// "Primary antibody 1:1000 in 5% BSA"
+    var summary: String {
+        var parts = [stockLabel]
+        if let value = DilutionMath.factor(factor) { parts.append("1:\(BufferMath.formatNumber(value))") }
+        if !diluent.trimmingCharacters(in: .whitespaces).isEmpty { parts.append("in \(diluent)") }
+        return parts.joined(separator: " ")
+    }
+
+    /// One line for print and Markdown export, where the calculator can't be interactive:
+    /// "Dilution: Primary antibody 1:1000 in 5% BSA — for 10 mL: 10 µL Primary antibody + 9.99 mL 5% BSA".
+    var printedLine: String {
+        var line = "Dilution: \(summary)"
+        if let amounts = amounts(for: defaultVolume) {
+            line += " — for \(BufferMath.formatVolume(amounts.total)): \(BufferMath.formatVolume(amounts.stock)) \(stockLabel) + \(BufferMath.formatVolume(amounts.diluent)) \(diluentLabel)"
+        } else if let factor = DilutionMath.factor(factor) {
+            line += " — 1 part \(stockLabel) to \(BufferMath.formatNumber(factor - 1)) parts \(diluentLabel)"
+        }
+        return line
+    }
+
+    /// Amounts of stock and diluent (in liters) for `volume`, or nil if either can't be read.
+    func amounts(for volume: String) -> (stock: Double, diluent: Double, total: Double)? {
+        guard let factor = DilutionMath.factor(factor), let total = BufferMath.volumeInLiters(volume), total > 0 else { return nil }
+        let stock = total / factor
+        return (stock, total - stock, total)
+    }
+}
+
 struct ProtocolStep: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var text: String
@@ -269,6 +330,8 @@ struct ProtocolStep: Identifiable, Codable, Equatable {
     var importance: StepImportance = .normal
     /// Optional table shown under the step (e.g. a dilution series).
     var table: StepTable?
+    /// Optional live dilution calculator shown under the step.
+    var dilution: LiveDilution?
 
     init(
         id: UUID = UUID(),
@@ -278,7 +341,8 @@ struct ProtocolStep: Identifiable, Codable, Equatable {
         notes: String = "",
         kind: StepKind = .step,
         importance: StepImportance = .normal,
-        table: StepTable? = nil
+        table: StepTable? = nil,
+        dilution: LiveDilution? = nil
     ) {
         self.id = id
         self.text = text
@@ -288,10 +352,11 @@ struct ProtocolStep: Identifiable, Codable, Equatable {
         self.kind = kind
         self.importance = importance
         self.table = table
+        self.dilution = dilution
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, text, durationMinutes, temperatureCelsius, notes, kind, importance, table
+        case id, text, durationMinutes, temperatureCelsius, notes, kind, importance, table, dilution
     }
 
     init(from decoder: Decoder) throws {
@@ -304,6 +369,7 @@ struct ProtocolStep: Identifiable, Codable, Equatable {
         kind = try container.decodeIfPresent(StepKind.self, forKey: .kind) ?? .step
         importance = try container.decodeIfPresent(StepImportance.self, forKey: .importance) ?? .normal
         table = try? container.decodeIfPresent(StepTable.self, forKey: .table)
+        dilution = try? container.decodeIfPresent(LiveDilution.self, forKey: .dilution)
     }
 }
 

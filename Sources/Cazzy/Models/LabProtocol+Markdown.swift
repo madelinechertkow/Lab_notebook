@@ -89,6 +89,9 @@ extension LabProtocol {
                         }
                         out += "\n"
                     }
+                    if let dilution = step.dilution {
+                        out += "   *\(dilution.printedLine)*\n"
+                    }
                 }
             }
         }
