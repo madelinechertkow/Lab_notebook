@@ -28,6 +28,11 @@ struct ProtocolEditorView: View {
     /// What's been ticked off in View mode. Lives here (not in the run view) so flipping to Edit
     /// to fix a typo mid-experiment doesn't lose your place; cleared when switching protocols.
     @State private var runChecked: Set<UUID> = []
+    /// The protocol the fields above were loaded from. This view is reused when you click a
+    /// different protocol, so for a moment `protocolID` is the new one while the fields still
+    /// hold the old one's contents; a text box committing on focus loss in that moment used to
+    /// save the old protocol's contents over the new one. Saving always targets this ID instead.
+    @State private var loadedProtocolID: UUID?
 
     private var currentProtocol: LabProtocol? {
         store.protocols.first(where: { $0.id == protocolID })
@@ -696,6 +701,7 @@ struct ProtocolEditorView: View {
 
     private func loadFromProtocol() {
         guard let currentProtocol else { return }
+        loadedProtocolID = currentProtocol.id
         name = currentProtocol.name
         purpose = currentProtocol.purpose
         buffers = currentProtocol.buffers
@@ -706,7 +712,17 @@ struct ProtocolEditorView: View {
     }
 
     private func persist() {
-        guard var updated = currentProtocol else { return }
+        // Only ever write the fields back into the protocol they were loaded from.
+        guard let loadedProtocolID,
+              var updated = store.protocols.first(where: { $0.id == loadedProtocolID }) else { return }
+        // Nothing actually changed (e.g. a text box committing on focus loss) — don't re-save.
+        guard updated.name != name
+            || updated.purpose != purpose
+            || updated.buffers != buffers
+            || updated.reagents != reagents
+            || updated.steps != steps
+            || updated.tags != tags
+            || updated.manualTotalMinutes != manualTotalMinutes else { return }
         updated.name = name
         updated.purpose = purpose
         updated.buffers = buffers

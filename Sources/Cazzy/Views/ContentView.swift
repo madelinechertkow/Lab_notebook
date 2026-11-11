@@ -36,19 +36,24 @@ struct ContentView: View {
         } detail: {
             if sidebarSelection == .protocols {
                 if let selectedProtocolID, store.protocols.contains(where: { $0.id == selectedProtocolID }) {
+                    // Not re-created per protocol (that would drop you out of View mode on every
+                    // switch); ProtocolEditorView saves only into the protocol it loaded instead.
                     ProtocolEditorView(protocolID: selectedProtocolID)
                 } else {
                     EmptyStateView()
                 }
             } else if sidebarSelection == .plateMaps {
                 if let selectedPlateMapID, store.plateMapTemplates.contains(where: { $0.id == selectedPlateMapID }) {
+                    // Fresh editor per template, for the same reason as EditorView below.
                     PlateMapEditorView(plateMapID: selectedPlateMapID)
+                        .id(selectedPlateMapID)
                 } else {
                     EmptyStateView()
                 }
             } else if sidebarSelection == .gelMaps {
                 if let selectedLadderID, store.gelLadderPresets.contains(where: { $0.id == selectedLadderID }) {
                     GelLadderEditorView(ladderID: selectedLadderID)
+                        .id(selectedLadderID)
                 } else {
                     EmptyStateView()
                 }
