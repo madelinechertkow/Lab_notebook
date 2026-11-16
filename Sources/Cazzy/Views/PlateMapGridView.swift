@@ -275,7 +275,9 @@ private struct WellEditorPopover: View {
                 .textFieldStyle(.roundedBorder)
 
             HStack {
-                ColorPicker("Color", selection: colorBinding)
+                Text("Color")
+                WellColorWell(color: colorBinding)
+                    .frame(width: 44, height: 24)
                 if hasColor {
                     Button("Clear") {
                         applyToAll { $0.colorHex = nil }
@@ -297,6 +299,67 @@ private struct WellEditorPopover: View {
             var annotation = wells[coordinate] ?? WellAnnotation()
             transform(&annotation)
             wells[coordinate] = annotation.isEmpty ? nil : annotation
+        }
+    }
+}
+
+/// The popover's color swatch. A native `NSColorWell` rather than SwiftUI's `ColorPicker`
+/// so that, if the system Colors window is already open when a well is clicked, the window
+/// switches over to that well right away — no need to click the swatch first.
+private struct WellColorWell: NSViewRepresentable {
+    @Binding var color: Color
+
+    func makeCoordinator() -> Coordinator { Coordinator(color: $color) }
+
+    func makeNSView(context: Context) -> AutoActivatingColorWell {
+        let well = AutoActivatingColorWell()
+        well.color = NSColor(color)
+        well.target = context.coordinator
+        well.action = #selector(Coordinator.colorChanged(_:))
+        well.coordinator = context.coordinator
+        return well
+    }
+
+    func updateNSView(_ well: AutoActivatingColorWell, context: Context) {
+        context.coordinator.color = $color
+        let current = NSColor(color)
+        if well.color != current {
+            context.coordinator.isSyncing = true
+            well.color = current
+            context.coordinator.isSyncing = false
+        }
+    }
+
+    final class Coordinator: NSObject {
+        var color: Binding<Color>
+        /// True while the swatch is being set up or synced programmatically, so only a
+        /// color the user actually picks is written to the wells (merely clicking an
+        /// uncolored well must never give it a color).
+        var isSyncing = false
+
+        init(color: Binding<Color>) { self.color = color }
+
+        @objc func colorChanged(_ sender: NSColorWell) {
+            guard !isSyncing else { return }
+            color.wrappedValue = Color(nsColor: sender.color)
+        }
+    }
+}
+
+private final class AutoActivatingColorWell: NSColorWell {
+    weak var coordinator: WellColorWell.Coordinator?
+    private var didAutoActivate = false
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil, !didAutoActivate, NSColorPanel.shared.isVisible else { return }
+        didAutoActivate = true
+        // Defer a tick so the popover has finished presenting before the panel retargets.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.window != nil else { return }
+            self.coordinator?.isSyncing = true
+            self.activate(true)
+            self.coordinator?.isSyncing = false
         }
     }
 }
