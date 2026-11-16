@@ -18,49 +18,99 @@ struct PlateMapGridView: View {
     /// edits every coordinate in `selection`, not just this one.
     @State private var editingCoordinate: String?
 
+    /// Drag-to-paint: pressing on a well and dragging across others copies that source
+    /// well's color (and, while Shift is held, its label too) onto every well the pointer
+    /// passes over. The painted wells are previewed live and written in one go on release,
+    /// so a whole drag is a single edit. Notes are never copied.
+    @State private var dragSource: String?
+    @State private var dragPainted: Set<String> = []
+    @State private var lastDragPoint: CGPoint?
+    @State private var cellFrames: [String: CGRect] = [:]
+    /// Whether Shift is held during the current drag — tracked live, so pressing or
+    /// releasing Shift mid-drag updates the preview, and the state at release is what's saved.
+    @State private var dragCopiesLabel = false
+
+    private static let gridSpace = "plateMapGrid"
+
     private var columns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: 6), count: size.columns)
     }
 
     var body: some View {
-        LazyVGrid(columns: columns, spacing: 6) {
-            ForEach(size.wellCoordinates, id: \.self) { coordinate in
-                wellCell(coordinate)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Text("Drag from a well to copy its color to other wells. Hold ⇧ Shift while dragging to copy its label too.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textSecondary)
+                Spacer()
             }
+
+            LazyVGrid(columns: columns, spacing: 6) {
+                ForEach(size.wellCoordinates, id: \.self) { coordinate in
+                    wellCell(coordinate)
+                }
+            }
+            .coordinateSpace(name: Self.gridSpace)
+            .onPreferenceChange(WellFramesKey.self) { cellFrames = $0 }
         }
+    }
+
+    /// What a well should look like right now — its saved annotation, or, while it's being
+    /// dragged over, the annotation it will get when the drag ends.
+    private func displayedAnnotation(_ coordinate: String) -> WellAnnotation {
+        let saved = wells[coordinate] ?? WellAnnotation()
+        guard dragPainted.contains(coordinate), let source = dragSource else { return saved }
+        return painted(saved, from: wells[source] ?? WellAnnotation())
+    }
+
+    private func painted(_ target: WellAnnotation, from source: WellAnnotation) -> WellAnnotation {
+        var result = target
+        if let color = source.colorHex { result.colorHex = color }
+        if dragCopiesLabel && !source.label.isEmpty { result.label = source.label }
+        return result
     }
 
     @ViewBuilder
     private func wellCell(_ coordinate: String) -> some View {
-        let annotation = wells[coordinate] ?? WellAnnotation()
-        let isSelected = selection.contains(coordinate)
-        Button {
-            handleClick(coordinate)
-        } label: {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(annotation.colorHex.map { Color(hex: $0) } ?? theme.editorBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(isSelected ? theme.accentDeep : theme.divider, lineWidth: isSelected ? 2.5 : 1)
-                    )
-                VStack(spacing: 2) {
-                    Text(coordinate)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(coordinateColor(annotation))
-                    if !annotation.label.isEmpty {
-                        Text(annotation.label)
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(labelColor(annotation))
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 2)
-                    }
+        let annotation = displayedAnnotation(coordinate)
+        let isSelected = selection.contains(coordinate) || dragSource == coordinate
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(annotation.colorHex.map { Color(hex: $0) } ?? theme.editorBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(isSelected ? theme.accentDeep : theme.divider, lineWidth: isSelected ? 2.5 : 1)
+                )
+            VStack(spacing: 2) {
+                Text(coordinate)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(coordinateColor(annotation))
+                if !annotation.label.isEmpty {
+                    Text(annotation.label)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(labelColor(annotation))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 2)
                 }
             }
         }
-        .buttonStyle(.plain)
         .aspectRatio(1, contentMode: .fit)
+        .contentShape(Rectangle())
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: WellFramesKey.self,
+                    value: [coordinate: proxy.frame(in: .named(Self.gridSpace))]
+                )
+            }
+        )
+        .onTapGesture { handleClick(coordinate) }
+        .gesture(
+            DragGesture(minimumDistance: 4, coordinateSpace: .named(Self.gridSpace))
+                .onChanged { value in dragChanged(from: coordinate, value: value) }
+                .onEnded { _ in dragEnded() }
+        )
         .popover(isPresented: Binding(
             get: { editingCoordinate == coordinate },
             set: { presented in
@@ -72,6 +122,49 @@ struct PlateMapGridView: View {
         )) {
             WellEditorPopover(coordinates: selection.isEmpty ? [coordinate] : selection.sorted(), wells: $wells)
         }
+    }
+
+    private func dragChanged(from source: String, value: DragGesture.Value) {
+        if dragSource == nil {
+            dragSource = source
+            dragPainted = []
+            lastDragPoint = value.startLocation
+            editingCoordinate = nil
+            selection = []
+        }
+        // Sample along the segment since the last event so a fast drag doesn't skip wells.
+        let from = lastDragPoint ?? value.location
+        let to = value.location
+        let steps = max(1, Int(hypot(to.x - from.x, to.y - from.y) / 4))
+        for i in 0...steps {
+            let t = CGFloat(i) / CGFloat(steps)
+            let point = CGPoint(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t)
+            if let hit = cellFrames.first(where: { $0.value.contains(point) })?.key, hit != source {
+                dragPainted.insert(hit)
+            }
+        }
+        lastDragPoint = to
+        dragCopiesLabel = NSEvent.modifierFlags.contains(.shift)
+    }
+
+    private func dragEnded() {
+        defer {
+            dragSource = nil
+            dragPainted = []
+            lastDragPoint = nil
+            dragCopiesLabel = false
+        }
+        guard let sourceCoordinate = dragSource, !dragPainted.isEmpty else { return }
+        let source = wells[sourceCoordinate] ?? WellAnnotation()
+        // A source with nothing to copy leaves every well untouched (never clears anything).
+        guard source.colorHex != nil || (dragCopiesLabel && !source.label.isEmpty) else { return }
+        var updated = wells
+        for coordinate in dragPainted {
+            let result = painted(updated[coordinate] ?? WellAnnotation(), from: source)
+            updated[coordinate] = result.isEmpty ? nil : result
+        }
+        wells = updated
+        anchorCoordinate = sourceCoordinate
     }
 
     /// A well's own color, readable against whatever fill it has (or plain text color for
@@ -126,6 +219,14 @@ struct PlateMapGridView: View {
         guard let first = coordinate.first, let rowAscii = first.asciiValue else { return nil }
         guard let col = Int(coordinate.dropFirst()) else { return nil }
         return (Int(rowAscii) - 65, col - 1)
+    }
+}
+
+/// Each well's frame in the grid's coordinate space, so a drag location maps to a well.
+private struct WellFramesKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
     }
 }
 
